@@ -6,6 +6,7 @@ import type {
   CseDataResponse,
   CseFetchRun,
   CseImportConfig,
+  CseMarketBreadthSummary,
   CseMarketRankingItem,
   CseRawRunSummary,
   CseSecurity
@@ -35,6 +36,13 @@ export function getCseImportConfig() {
 
 export function runCseImport(input?: { tradingDate?: string }) {
   return panelFetch<unknown>('/api/cse/import/run', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {})
+  });
+}
+
+export function runTradeSummaryImport(input?: { tradingDate?: string }) {
+  return panelFetch<unknown>('/api/cse/import/trade-summary/run', {
     method: 'POST',
     body: JSON.stringify(input ?? {})
   });
@@ -82,4 +90,12 @@ export function getTopTradeVolume(params?: ListParams) {
 
 export function getTopShareVolume(params?: ListParams) {
   return apiFetch<CseMarketRankingItem[] | CseDataResponse<CseMarketRankingItem[]>>(`market/top-share-volume${toQueryString(params)}`).then(unwrapData);
+}
+
+export function getWatchListMovers(params?: ListParams) {
+  return apiFetch<CseMarketRankingItem[] | CseDataResponse<CseMarketRankingItem[]>>(`market/watch-list-movers${toQueryString(params)}`).then(unwrapData);
+}
+
+export function getMarketBreadth(params?: Pick<ListParams, 'date'>) {
+  return apiFetch<CseMarketBreadthSummary | CseDataResponse<CseMarketBreadthSummary>>(`market/breadth${toQueryString(params)}`).then((response) => ('data' in response ? response.data : response));
 }

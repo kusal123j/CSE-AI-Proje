@@ -7,7 +7,7 @@ import { ensureQdrantCollection } from './config/qdrant';
 import { runMigrations } from './database/migrate';
 import { startDocumentDownloadWorker } from './queues/documentDownload.queue';
 import { startPdfExtractWorker } from './queues/pdfExtract.queue';
-import { startCseAlphabeticalScheduler } from './modules/cse/cse.scheduler';
+import { startCseAlphabeticalScheduler, startCseTradeSummaryScheduler } from './modules/cse/cse.scheduler';
 
 async function bootstrap() {
   if (env.RUN_MIGRATIONS_ON_START) {
@@ -26,11 +26,13 @@ async function bootstrap() {
 
   const workers = [startDocumentDownloadWorker(), startPdfExtractWorker()];
   const cseScheduler = startCseAlphabeticalScheduler();
+  const cseTradeSummaryScheduler = startCseTradeSummaryScheduler();
 
   async function shutdown(signal: string) {
     logger.info({ signal }, 'Shutting down backend');
     server.close();
     cseScheduler?.stop();
+    cseTradeSummaryScheduler?.stop();
     await Promise.all(workers.map((worker) => worker.close()));
     await closeDatabase();
     process.exit(0);

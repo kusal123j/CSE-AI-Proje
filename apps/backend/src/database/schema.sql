@@ -250,11 +250,18 @@ CREATE TABLE IF NOT EXISTS cse_daily_market_snapshots (
   symbol VARCHAR(30) NOT NULL,
   trading_date DATE NOT NULL,
   last_traded_price NUMERIC(18, 4),
+  previous_close NUMERIC(18, 4),
+  open_price NUMERIC(18, 4),
+  high_price NUMERIC(18, 4),
+  low_price NUMERIC(18, 4),
   trade_volume BIGINT,
   share_volume BIGINT,
   turnover NUMERIC(20, 4),
   change_amount NUMERIC(18, 4),
   change_percent NUMERIC(12, 6),
+  is_watch_list BOOLEAN NOT NULL DEFAULT false,
+  market_timestamp TIMESTAMPTZ,
+  source_market_timestamp_text TEXT,
   import_run_id UUID,
   source_page TEXT NOT NULL DEFAULT 'ALPHABETICAL',
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -305,6 +312,13 @@ ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMPTZ;
 ALTER TABLE cse_companies ADD COLUMN IF NOT EXISTS last_seen_import_run_id UUID;
 ALTER TABLE cse_securities ADD COLUMN IF NOT EXISTS last_seen_import_run_id UUID;
 ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS import_run_id UUID;
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS previous_close NUMERIC(18, 4);
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS open_price NUMERIC(18, 4);
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS high_price NUMERIC(18, 4);
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS low_price NUMERIC(18, 4);
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS is_watch_list BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS market_timestamp TIMESTAMPTZ;
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS source_market_timestamp_text TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_cse_companies_last_seen ON cse_companies(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_cse_companies_active ON cse_companies(is_active);
@@ -316,6 +330,9 @@ CREATE INDEX IF NOT EXISTS idx_cse_daily_market_change_percent ON cse_daily_mark
 CREATE INDEX IF NOT EXISTS idx_cse_daily_market_turnover ON cse_daily_market_snapshots(turnover);
 CREATE INDEX IF NOT EXISTS idx_cse_daily_market_trade_volume ON cse_daily_market_snapshots(trade_volume);
 CREATE INDEX IF NOT EXISTS idx_cse_daily_market_share_volume ON cse_daily_market_snapshots(share_volume);
+CREATE INDEX IF NOT EXISTS idx_cse_daily_market_watch_list ON cse_daily_market_snapshots(is_watch_list);
+CREATE INDEX IF NOT EXISTS idx_cse_daily_market_source_page ON cse_daily_market_snapshots(source_page);
+CREATE INDEX IF NOT EXISTS idx_cse_daily_market_market_timestamp ON cse_daily_market_snapshots(market_timestamp);
 CREATE INDEX IF NOT EXISTS idx_cse_fetch_runs_started_at ON cse_fetch_runs(started_at DESC);
 
 CREATE TABLE IF NOT EXISTS cse_import_artifacts (
@@ -361,11 +378,18 @@ CREATE TABLE IF NOT EXISTS cse_import_stage_market_snapshots (
   symbol VARCHAR(30) NOT NULL,
   trading_date DATE NOT NULL,
   last_traded_price NUMERIC(18, 4),
+  previous_close NUMERIC(18, 4),
+  open_price NUMERIC(18, 4),
+  high_price NUMERIC(18, 4),
+  low_price NUMERIC(18, 4),
   trade_volume BIGINT,
   share_volume BIGINT,
   turnover NUMERIC(20, 4),
   change_amount NUMERIC(18, 4),
   change_percent NUMERIC(12, 6),
+  is_watch_list BOOLEAN NOT NULL DEFAULT false,
+  market_timestamp TIMESTAMPTZ,
+  source_market_timestamp_text TEXT,
   source_letter CHAR(1),
   raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

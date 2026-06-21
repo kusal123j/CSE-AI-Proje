@@ -1,70 +1,120 @@
 'use client';
 
 import { useState } from 'react';
-import { runCseImport } from '@/lib/api/cse';
+import { runCseImport, runTradeSummaryImport } from '@/lib/api/cse';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import type { CseImportConfig } from '@/lib/types/cse';
 import { getErrorMessage } from '@/lib/api/errors';
 
+function ResultAlert({ result }: { result: unknown }) {
+  return (
+    <Alert tone="success" className="mt-4">
+      <div className="font-semibold">Import job started. The latest run status will refresh shortly; use the Refresh button for final completion details.</div>
+      <pre className="mt-2 max-h-52 overflow-auto rounded-xl bg-background p-3 text-xs">{JSON.stringify(result, null, 2)}</pre>
+    </Alert>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string | number | null | undefined }) {
+  return (
+    <div className="rounded-xl bg-muted p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 font-semibold">{value ?? 'Unknown'}</div>
+    </div>
+  );
+}
+
 export function ImportControlPanel({ config, onRunFinished }: { config?: CseImportConfig | null; onRunFinished?: () => void }) {
-  const [running, setRunning] = useState(false);
+  const [runningAlphabetical, setRunningAlphabetical] = useState(false);
+  const [runningTradeSummary, setRunningTradeSummary] = useState(false);
   const [result, setResult] = useState<unknown | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleRun() {
-    setRunning(true);
+  async function handleAlphabeticalRun() {
+    setRunningAlphabetical(true);
     setError(null);
     setResult(null);
     try {
       const response = await runCseImport();
       setResult(response);
       onRunFinished?.();
+      window.setTimeout(() => onRunFinished?.(), 1500);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
-      setRunning(false);
+      setRunningAlphabetical(false);
+    }
+  }
+
+  async function handleTradeSummaryRun() {
+    setRunningTradeSummary(true);
+    setError(null);
+    setResult(null);
+    try {
+      const response = await runTradeSummaryImport();
+      setResult(response);
+      onRunFinished?.();
+      window.setTimeout(() => onRunFinished?.(), 1500);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setRunningTradeSummary(false);
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>Manual import control</CardTitle>
-          <CardDescription>Triggers the backend CSE Listed Company Directory ALPHABETICAL Python HTTP importer.</CardDescription>
+    <div className="space-y-5">
+      <Card>
+        <CardHeader>
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <CardTitle>A–Z company/security master import</CardTitle>
+              <Badge tone="info">Master data</Badge>
+            </div>
+            <CardDescription>Triggers the existing CSE Listed Company Directory ALPHABETICAL A–Z Python HTTP importer.</CardDescription>
+          </div>
+          <Button onClick={handleAlphabeticalRun} disabled={runningAlphabetical || runningTradeSummary}>{runningAlphabetical ? 'Starting…' : 'Start A–Z Import'}</Button>
+        </CardHeader>
+        <div className="grid gap-3 md:grid-cols-4">
+          <Stat label="Import mode" value={config?.mode || 'python-http'} />
+          <Stat label="Scheduler" value={config ? (config.schedulerEnabled ? 'Enabled' : 'Disabled') : 'Unknown'} />
+          <Stat label="Job / letter timeout" value={`${config?.jobTimeoutSeconds || 300}s / ${config?.letterTimeoutSeconds || 30}s`} />
+          <Stat label="Retries / automation" value={`${config?.maxRetries || 3} retries / HTTP API`} />
         </div>
-        <Button onClick={handleRun} disabled={running}>{running ? 'Starting import…' : 'Run CSE Import'}</Button>
-      </CardHeader>
-      <div className="grid gap-3 md:grid-cols-4">
-        <div className="rounded-xl bg-muted p-3">
-          <div className="text-xs text-muted-foreground">Current import mode</div>
-          <div className="mt-1 font-semibold">{config?.mode || 'python-http'}</div>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <CardTitle>Trade Summary daily market import</CardTitle>
+              <Badge tone="success">Daily statistics</Badge>
+            </div>
+            <CardDescription>Starts the daily share trading statistics import: previous close, open, high, low, last trade, volumes, change %, and Watch List flags. The backend runs the job asynchronously and this panel refreshes the latest status after trigger.</CardDescription>
+          </div>
+          <Button onClick={handleTradeSummaryRun} disabled={runningAlphabetical || runningTradeSummary || config?.tradeSummary?.enabled === false}>
+            {runningTradeSummary ? 'Starting…' : 'Start Trade Summary Import'}
+          </Button>
+        </CardHeader>
+        <div className="grid gap-3 md:grid-cols-4">
+          <Stat label="Source" value={config?.tradeSummary?.source || 'CSE_TRADE_SUMMARY'} />
+          <Stat label="Scheduler" value={config?.tradeSummary ? (config.tradeSummary.schedulerEnabled ? 'Enabled' : 'Disabled') : 'Unknown'} />
+          <Stat label="Timeout" value={`${config?.tradeSummary?.timeoutSeconds || 90}s`} />
+          <Stat label="CSV fallback" value={config?.tradeSummary?.csvFallbackConfigured ? 'Configured' : config?.tradeSummary?.csvDiscoveryEnabled ? 'Auto-discovery enabled' : 'Not configured'} />
         </div>
-        <div className="rounded-xl bg-muted p-3">
-          <div className="text-xs text-muted-foreground">Scheduler status</div>
-          <div className="mt-1 font-semibold">{config ? (config.schedulerEnabled ? 'Enabled' : 'Disabled') : 'Unknown'}</div>
-        </div>
-        <div className="rounded-xl bg-muted p-3">
-          <div className="text-xs text-muted-foreground">Job / letter timeout</div>
-          <div className="mt-1 font-semibold">{config?.jobTimeoutSeconds || 300}s / {config?.letterTimeoutSeconds || 30}s</div>
-        </div>
-        <div className="rounded-xl bg-muted p-3">
-          <div className="text-xs text-muted-foreground">Retries / automation mode</div>
-          <div className="mt-1 font-semibold">{config?.maxRetries || 3} retries / HTTP API</div>
-        </div>
-      </div>
-      {error ? <Alert tone="danger" className="mt-4"><strong>Import trigger failed:</strong> {error}</Alert> : null}
-      {result ? (
-        <Alert tone="success" className="mt-4">
-          <div className="font-semibold">Import job accepted by backend. Poll the run ID for status.</div>
-          <pre className="mt-2 max-h-52 overflow-auto rounded-xl bg-background p-3 text-xs">{JSON.stringify(result, null, 2)}</pre>
+        <Alert tone="warning" className="mt-4">
+          Trade Summary is saved as daily market activity. It does not replace the A–Z company/security master importer. No Playwright/Chromium browser automation is used.
         </Alert>
-      ) : null}
-      <Alert tone="warning" className="mt-4">
-        The import secret is never stored in browser code. The button calls a Next.js server route, and that server route forwards the secure header to the backend.
+      </Card>
+
+      {error ? <Alert tone="danger"><strong>Import trigger failed:</strong> {error}</Alert> : null}
+      {result ? <ResultAlert result={result} /> : null}
+      <Alert tone="warning">
+        The import secret is never stored in browser code. Buttons call Next.js server routes, and those server routes forward the secure header to the backend.
       </Alert>
-    </Card>
+    </div>
   );
 }

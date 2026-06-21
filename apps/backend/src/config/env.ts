@@ -75,6 +75,17 @@ export const envSchema = z.object({
   CSE_IMPORT_MINUTE: z.coerce.number().min(0).max(59).default(0),
   CSE_IMPORT_WEEKDAYS_ONLY: booleanFromEnv.default(true),
   CSE_IMPORT_SCHEDULER_INTERVAL_MS: z.coerce.number().positive().default(60000),
+
+  CSE_TRADE_SUMMARY_ENABLED: booleanFromEnv.default(true),
+  CSE_TRADE_SUMMARY_SOURCE_URL: z.string().url().default('https://www.cse.lk/equity/trade-summary'),
+  CSE_TRADE_SUMMARY_CSV_URL: z.string().optional().default(''),
+  CSE_TRADE_SUMMARY_ARTIFACT_STORAGE_DIR: z.string().default('storage/raw/cse/trade-summary'),
+  CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS: z.coerce.number().positive().default(100),
+  CSE_TRADE_SUMMARY_TIMEOUT_SECONDS: z.coerce.number().positive().default(90),
+  CSE_TRADE_SUMMARY_SCHEDULER_ENABLED: booleanFromEnv.default(false),
+  CSE_TRADE_SUMMARY_HOUR: z.coerce.number().min(0).max(23).default(15),
+  CSE_TRADE_SUMMARY_MINUTE: z.coerce.number().min(0).max(59).default(45),
+  CSE_TRADE_SUMMARY_WEEKDAYS_ONLY: booleanFromEnv.default(true),
 });
 
 export const env = envSchema.parse(process.env);

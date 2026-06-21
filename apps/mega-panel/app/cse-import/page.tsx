@@ -15,9 +15,10 @@ import { useFetchRuns } from '@/hooks/useFetchRuns';
 
 export default function CseImportPage() {
   const config = useAsyncData(getCseImportConfig, []);
-  const runs = useFetchRuns(1);
+  const runs = useFetchRuns(10);
   const latestRun = useMemo(() => runs.data?.[0] ?? null, [runs.data]);
-  const rawSummary = useAsyncData(() => latestRun ? getRawRunSummary(latestRun.id) : Promise.resolve(null), [latestRun?.id]);
+  const latestAzRun = useMemo(() => runs.data?.find((run) => run.source !== 'CSE_TRADE_SUMMARY') ?? null, [runs.data]);
+  const rawSummary = useAsyncData(() => latestAzRun ? getRawRunSummary(latestAzRun.id) : Promise.resolve(null), [latestAzRun?.id]);
 
   function refreshAll() {
     void config.reload();
@@ -29,7 +30,7 @@ export default function CseImportPage() {
     <div>
       <PageHeader
         title="CSE Import Control"
-        description="Manual control and visibility for the lightweight HTTP/API CSE Listed Company Directory ALPHABETICAL A–Z importer. No Playwright/Chromium browser automation is used."
+        description="Manual control and visibility for CSE imports: A–Z company/security master data plus Trade Summary daily market statistics. No Playwright/Chromium browser automation is used."
         actions={<Button variant="secondary" onClick={refreshAll}>Refresh</Button>}
       />
 
@@ -42,7 +43,7 @@ export default function CseImportPage() {
           <CardHeader>
             <CardTitle>A–Z progress grid</CardTitle>
           </CardHeader>
-          {rawSummary.error ? <BackendMissingState error={rawSummary.error} expectedEndpoint="GET /api/cse/import/runs/:id/raw-summary" /> : <AzProgressGrid run={latestRun} rawSummary={rawSummary.data} />}
+          {rawSummary.error ? <BackendMissingState error={rawSummary.error} expectedEndpoint="GET /api/cse/import/runs/:id/raw-summary" /> : <AzProgressGrid run={latestAzRun} rawSummary={rawSummary.data} />}
         </Card>
       </div>
     </div>

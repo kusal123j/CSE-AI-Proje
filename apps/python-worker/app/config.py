@@ -33,6 +33,12 @@ class Settings:
         "CSE_IMPORT_USER_AGENT",
         "Mozilla/5.0 compatible CSE Research Assistant Importer",
     )
+    cse_trade_summary_source_url: str = os.getenv(
+        "CSE_TRADE_SUMMARY_SOURCE_URL",
+        "https://www.cse.lk/equity/trade-summary",
+    )
+    cse_trade_summary_csv_url: str = os.getenv("CSE_TRADE_SUMMARY_CSV_URL", "")
+    cse_trade_summary_min_expected_rows: int = int(os.getenv("CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS", "100"))
 
     @property
     def minio_host(self) -> str:

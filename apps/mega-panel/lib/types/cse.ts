@@ -49,6 +49,25 @@ export interface CseImportConfig {
   artifactStorageDir?: string;
   staleAfterHours?: number;
   lastSuccessfulImportAt?: string | null;
+  tradeSummary?: {
+    enabled: boolean;
+    source: string;
+    sourceUrl: string;
+    fetchGranularity: string;
+    directApiExportAllowed: boolean;
+    csvFallbackConfigured: boolean;
+    csvDiscoveryEnabled?: boolean;
+    htmlFallbackEnabled?: boolean;
+    browserAutomationEnabled: boolean;
+    playwrightEnabled: boolean;
+    schedulerEnabled: boolean;
+    weekdaysOnly?: boolean;
+    scheduledHour?: number;
+    scheduledMinute?: number;
+    timeoutSeconds?: number;
+    minExpectedRows?: number;
+    artifactStorageDir?: string;
+  };
 }
 
 export interface CseRawRunSummary {
@@ -98,6 +117,11 @@ export interface CseSecurity {
   is_active?: boolean;
   latest_snapshot_date?: string | null;
   last_traded_price?: number | string | null;
+  previous_close?: number | string | null;
+  open_price?: number | string | null;
+  high_price?: number | string | null;
+  low_price?: number | string | null;
+  is_watch_list?: boolean | string | null;
   trade_volume?: number | string | null;
   share_volume?: number | string | null;
   turnover?: number | string | null;
@@ -114,6 +138,13 @@ export interface CseDailySnapshot {
   logo_url?: string | null;
   profile_url?: string | null;
   last_traded_price?: number | string | null;
+  previous_close?: number | string | null;
+  open_price?: number | string | null;
+  high_price?: number | string | null;
+  low_price?: number | string | null;
+  is_watch_list?: boolean | string | null;
+  market_timestamp?: string | null;
+  source_market_timestamp_text?: string | null;
   trade_volume?: number | string | null;
   share_volume?: number | string | null;
   turnover?: number | string | null;
@@ -126,6 +157,18 @@ export interface CseDailySnapshot {
 }
 
 export type CseMarketRankingItem = CseDailySnapshot;
+
+export interface CseMarketBreadthSummary {
+  tradingDate: string | null;
+  gainersCount: number;
+  losersCount: number;
+  unchangedCount: number;
+  watchListCount: number;
+  activeSecuritiesCount: number;
+  totalShareVolume: number;
+  totalTradeVolume: number;
+}
+
 
 export interface AzLetterProgress {
   letter: string;

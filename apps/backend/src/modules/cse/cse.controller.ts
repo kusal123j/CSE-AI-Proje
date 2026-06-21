@@ -19,6 +19,11 @@ export const cseController = {
     return ok(res, await cseService.startAlphabeticalImportJob({ tradingDate, triggerType: 'manual' }), 202);
   },
 
+  async runTradeSummaryImport(req: Request, res: Response) {
+    const tradingDate = typeof req.body?.tradingDate === 'string' ? req.body.tradingDate : undefined;
+    return ok(res, await cseService.startTradeSummaryImportJob({ tradingDate, triggerType: 'manual' }), 202);
+  },
+
   async summary(_req: Request, res: Response) {
     return ok(res, await cseAnalyticsService.getDashboardSummary());
   },
@@ -89,5 +94,13 @@ export const cseController = {
 
   async topShareVolume(req: Request, res: Response) {
     return ok(res, await cseAnalyticsService.rank({ type: 'topShareVolume', date: String(req.query.date || ''), page: page(req), limit: limit(req) }));
+  },
+
+  async watchListMovers(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.rank({ type: 'watchListMovers', date: String(req.query.date || ''), page: page(req), limit: limit(req) }));
+  },
+
+  async marketBreadth(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.marketBreadth({ date: String(req.query.date || '') }));
   }
 };

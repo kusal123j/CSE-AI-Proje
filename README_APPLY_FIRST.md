@@ -1,66 +1,20 @@
-# Apply First - CSE HTTP/API A-Z ALPHABETICAL Importer
+# README APPLY FIRST
 
-This package keeps the CSE import path lightweight: **no Playwright, no Chromium, no real browser automation**.
+This corrected package implements and hardens the separate CSE Trade Summary daily market importer while preserving the existing A-Z ALPHABETICAL company/security master importer.
 
-## What this package does
+## What changed
 
-- Uses the official CSE ALPHABETICAL directory source URL as the allowed source context.
-- Calls the CSE ALPHABETICAL HTTP/API endpoint letter by letter from `A` to `Z`.
-- Does not use a full-export-first path because the system does not support full export.
-- Saves raw per-letter JSON artifacts plus merged normalized JSON and validation reports.
-- Validates all 26 letters, row counts, company count, symbol/security count, missing fields, and duplicate symbols before promotion.
-- Promotes to PostgreSQL only after validation passes.
-- Keeps previous successful live data if the latest import fails.
-- Stores company master data, security/symbol data, and daily market snapshots separately.
-- Calculates gainers, losers, turnover ranking, trade volume ranking, and share volume ranking internally from ALPHABETICAL snapshots.
+- Separate backend route: `POST /api/cse/import/trade-summary/run`.
+- Separate Python worker route: `POST /cse/import/trade-summary`.
+- Trade Summary snapshot fields: previous close, open, high, low, last trade, share/trade volume, change, Watch List flag.
+- Robust fallback order: API first, configured CSV, discovered CSV/export link, then HTML table fallback.
+- Stronger Watch List detection and tracing.
+- Mega Panel has separate A-Z and Trade Summary import controls.
 
-## Required setup
+## Important rule
 
-```bash
-npm install
-pip install -r apps/python-worker/requirements.txt
-```
+A-Z remains the company/security master source. Trade Summary is only the daily market activity/statistics source. No Playwright/Chromium browser automation is used.
 
-Set the CSE import mode and source:
+## Files/reports
 
-```env
-CSE_IMPORT_MODE=python-http
-CSE_IMPORT_FETCH_MODE=python-http
-CSE_IMPORT_SOURCE_URL=https://www.cse.lk/listed-entities/listed-company-directory?page=ALPHABETICAL
-CSE_LISTED_COMPANY_DIRECTORY_URL=https://www.cse.lk/listed-entities/listed-company-directory?page=ALPHABETICAL
-CSE_IMPORT_MIN_EXPECTED_ROWS=250
-CSE_IMPORT_MIN_COMPANIES=280
-CSE_IMPORT_MIN_SECURITIES=280
-CSE_IMPORT_TIMEOUT_SECONDS=30
-CSE_IMPORT_MAX_RETRIES=3
-CSE_IMPORT_USER_AGENT=Mozilla/5.0 compatible CSE Research Assistant Importer
-CSE_IMPORT_INTERNAL_SECRET=your-long-random-secret
-```
-
-Manual import route:
-
-```http
-POST /api/cse/import/alphabetical/run
-x-cse-import-secret: your-long-random-secret
-```
-
-Alias route also exists:
-
-```http
-POST /api/cse/import/run
-x-cse-import-secret: your-long-random-secret
-```
-
-Configuration route:
-
-```http
-GET /api/cse/import/config
-```
-
-## Validation commands
-
-```bash
-python -m pytest apps/python-worker/tests
-DATABASE_URL=postgresql://user:pass@localhost:5432/db npm --prefix apps/backend run typecheck
-DATABASE_URL=postgresql://user:pass@localhost:5432/db npm --prefix apps/backend test
-```
+Read `MODIFIED_ONLY_MANIFEST.md`, `FILE_COMPARISON_REPORT.md`, `DIFF_SUMMARY.md`, and `TEST_RESULTS.md` before applying.

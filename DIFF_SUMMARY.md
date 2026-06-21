@@ -1,39 +1,22 @@
-# Diff Summary — Final Fully Corrected CSE HTTP/API A-Z Importer
+# DIFF SUMMARY
 
-## Main correction outcome
+Correction pass completed to raise the Trade Summary package above 9-star readiness.
 
-This package consolidates all prior fixes into one final ZIP that can be applied directly to the user's latest original project. It does not require applying older packages first.
+## Main improvements over previous package
 
-## Core behavior
+1. CSV fallback is stronger: API → configured CSV → discovered CSV/export URL → HTML table fallback.
+2. Watch List detection is stronger: API fields, status text, and highlighted HTML classes are supported.
+3. Backend behavior tests increased from 33 to 36 total backend tests.
+4. Python worker tests increased from 15 to 18 tests.
+5. Mega Panel now says “Start Trade Summary Import” and refreshes latest status shortly after trigger.
+6. Final hash and full-content diffs were regenerated.
 
-- Uses lightweight backend/Python HTTP/API fetching.
-- Fetches the CSE ALPHABETICAL source A-Z letter by letter.
-- Does not use Playwright, Chromium, Selenium, or browser automation.
-- Does not use full-export-first logic.
-- Deduplicates by symbol.
-- Saves per-letter raw artifacts and normalized reports.
-- Writes candidate rows to staging tables before promotion.
-- Promotes to live tables only after validation passes.
-- Keeps previous good data active after failed imports.
+## Validation summary
 
-## Final review blocker fixes
-
-- Valid-empty letters are now completed letters, not failed/unknown letters.
-- Python worker `lettersSuccessful` counts `success` + `empty` statuses.
-- Backend fetcher fallback counts `success` + `empty` statuses.
-- Backend validator uses per-letter details/artifacts to calculate completed terminal states.
-- Added backend and Python tests covering valid-empty letters.
-- Removed stale browser package docs.
-- Cleaned stale Mega Panel labels and docs.
-- Removed generated build cache file from package.
-- Mega Panel typecheck now passes by removing an unused missing type reference.
-
-## Verification summary
-
-```text
-Backend typecheck: passed
-Backend tests: 29/29 passed
-Backend build: passed
-Python worker tests: 11/11 passed
-Mega Panel typecheck: passed
-```
+- Backend tests: 36 passed.
+- Backend build: passed.
+- Python worker tests: 18 passed.
+- Mega Panel tests: 13 passed.
+- Mega Panel typecheck: passed.
+- Mega Panel build: passed with existing Next/Turbopack tracing warning only.
+- No Playwright/Chromium dependency added for CSE importing.

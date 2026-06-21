@@ -5,7 +5,7 @@ import axios from 'axios';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
 import { assertAlphabeticalSourceUrl } from './cse.sourceGuard';
-import { CseLetterArtifact, CseLetterFailure, FetchAlphabeticalResult, ParsedCseAlphabeticalRow } from './cse.types';
+import { CseLetterArtifact, CseLetterFailure, FetchAlphabeticalResult, FetchTradeSummaryResult, ParsedCseAlphabeticalRow, ParsedCseTradeSummaryRow } from './cse.types';
 
 interface FetchAlphabeticalRowsOptions {
   runId: string;
@@ -214,3 +214,146 @@ export async function fetchAlphabeticalRows(options: FetchAlphabeticalRowsOption
     duplicateSymbols: response.duplicateSymbols ?? []
   };
 }
+interface PythonTradeSummaryResponse {
+  status: string;
+  sourceUrl: string;
+  fetchMode: string;
+  fetchStrategy?: string;
+  fetchedAt?: string;
+  marketTimestamp?: string | null;
+  sourceMarketTimestampText?: string | null;
+  rowCount: number;
+  recordsBeforeDeduplication?: number;
+  recordsDeduplicated?: number;
+  duplicateSymbols?: string[];
+  checksum?: string;
+  warnings?: string[];
+  rawResponse?: unknown;
+  rows: ParsedCseTradeSummaryRow[];
+}
+
+function assertTradeSummarySourceUrl(sourceUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(sourceUrl);
+  } catch {
+    throw new AppError(400, 'Invalid CSE Trade Summary source URL');
+  }
+  if (parsed.hostname !== 'www.cse.lk' && parsed.hostname !== 'cse.lk') {
+    throw new AppError(400, 'Only cse.lk source URLs are allowed for the Trade Summary importer');
+  }
+  if (!parsed.pathname.includes('/equity/trade-summary')) {
+    throw new AppError(400, 'Only the CSE equity/trade-summary source path is allowed for this importer');
+  }
+}
+
+function validatePythonTradeSummaryResponse(value: unknown): PythonTradeSummaryResponse {
+  const response = value as Partial<PythonTradeSummaryResponse>;
+  if (!response || typeof response !== 'object') {
+    throw new AppError(502, 'Python CSE Trade Summary importer returned an invalid response body.');
+  }
+  if (response.fetchMode !== 'python-http') {
+    throw new AppError(502, `Python CSE Trade Summary importer returned unsupported mode: ${String(response.fetchMode)}`);
+  }
+  if (!Array.isArray(response.rows)) {
+    throw new AppError(502, 'Python CSE Trade Summary importer response did not include a rows array.');
+  }
+  if (response.rows.length === 0) {
+    throw new AppError(502, 'Python CSE Trade Summary importer returned zero rows.');
+  }
+  return response as PythonTradeSummaryResponse;
+}
+
+export async function fetchTradeSummaryRows(options: FetchAlphabeticalRowsOptions): Promise<FetchTradeSummaryResult> {
+  assertTradeSummarySourceUrl(env.CSE_TRADE_SUMMARY_SOURCE_URL);
+
+  let response: PythonTradeSummaryResponse;
+  try {
+    const { data } = await axios.post(
+      `${env.PYTHON_WORKER_URL}/cse/import/trade-summary`,
+      {
+        runId: options.runId,
+        tradingDate: options.tradingDate,
+        sourceUrl: env.CSE_TRADE_SUMMARY_SOURCE_URL
+      },
+      {
+        timeout: env.CSE_TRADE_SUMMARY_TIMEOUT_SECONDS * 1000
+      }
+    );
+    response = validatePythonTradeSummaryResponse(data);
+  } catch (error) {
+    throw new AppError(502, `CSE Trade Summary Python HTTP importer failed: ${pythonImporterErrorMessage(error)}`);
+  }
+
+  const warnings = [...(response.warnings ?? [])];
+  if (response.rows.length < env.CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS) {
+    warnings.push(`Trade Summary row count ${response.rows.length} is below configured minimum ${env.CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS}.`);
+  }
+
+  const rawStoragePath = path.resolve(process.cwd(), env.CSE_TRADE_SUMMARY_ARTIFACT_STORAGE_DIR, options.tradingDate, options.runId);
+  const rawDir = path.join(rawStoragePath, 'raw');
+  const normalizedDir = path.join(rawStoragePath, 'normalized');
+  const reportsDir = path.join(rawStoragePath, 'reports');
+  await fs.mkdir(rawDir, { recursive: true });
+  await fs.mkdir(normalizedDir, { recursive: true });
+  await fs.mkdir(reportsDir, { recursive: true });
+
+  const rawArtifactPath = path.join(rawDir, 'trade-summary-raw-response.json');
+  const rawArtifact = await writeJsonArtifact(rawArtifactPath, {
+    source: 'CSE_TRADE_SUMMARY',
+    sourceUrl: response.sourceUrl,
+    fetchMode: response.fetchMode,
+    fetchStrategy: response.fetchStrategy,
+    fetchedAt: response.fetchedAt,
+    marketTimestamp: response.marketTimestamp ?? null,
+    sourceMarketTimestampText: response.sourceMarketTimestampText ?? null,
+    checksum: response.checksum,
+    warnings,
+    rawResponse: response.rawResponse ?? null
+  });
+
+  const rawContentObject = {
+    source: 'CSE_TRADE_SUMMARY',
+    sourceUrl: response.sourceUrl,
+    fetchMode: 'python-http',
+    fetchStrategy: response.fetchStrategy ?? 'api',
+    fetchedAt: response.fetchedAt,
+    checksum: response.checksum ?? rawArtifact.checksum,
+    rawStoragePath,
+    rawArtifactPath,
+    warnings,
+    marketTimestamp: response.marketTimestamp ?? null,
+    sourceMarketTimestampText: response.sourceMarketTimestampText ?? null,
+    recordsBeforeDeduplication: response.recordsBeforeDeduplication ?? response.rows.length,
+    recordsDeduplicated: response.recordsDeduplicated ?? 0,
+    duplicateSymbols: response.duplicateSymbols ?? [],
+    rows: response.rows
+  };
+  const rawContent = JSON.stringify(rawContentObject, null, 2);
+  await fs.writeFile(path.join(normalizedDir, 'trade-summary-normalized.json'), rawContent, 'utf8');
+  await writeJsonArtifact(path.join(reportsDir, 'trade-summary-import-report.json'), {
+    runId: options.runId,
+    tradingDate: options.tradingDate,
+    createdAt: new Date().toISOString(),
+    ...rawContentObject,
+    rows: undefined
+  });
+
+  return {
+    rows: response.rows,
+    rawContent,
+    fetchMode: 'python-http',
+    fetchStrategy: response.fetchStrategy ?? 'api',
+    sourceUrl: response.sourceUrl,
+    warnings,
+    rawStoragePath,
+    rawArtifactPath,
+    checksum: response.checksum ?? rawArtifact.checksum,
+    marketTimestamp: response.marketTimestamp ?? null,
+    sourceMarketTimestampText: response.sourceMarketTimestampText ?? null,
+    recordsBeforeDeduplication: response.recordsBeforeDeduplication ?? response.rows.length,
+    recordsDeduplicated: response.recordsDeduplicated ?? 0,
+    duplicateSymbols: response.duplicateSymbols ?? []
+  };
+}
+

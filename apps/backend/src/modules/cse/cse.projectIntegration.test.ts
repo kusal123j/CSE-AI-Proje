@@ -17,6 +17,7 @@ test('CSE scheduler is wired into server startup but remains env-disabled by def
   const serverSource = readProjectFile('server.ts');
   const envSource = readProjectFile('config/env.ts');
   assert.match(serverSource, /startCseAlphabeticalScheduler/);
+  assert.match(serverSource, /startCseTradeSummaryScheduler/);
   assert.match(envSource, /CSE_IMPORT_SCHEDULER_ENABLED:\s*booleanFromEnv\.default\(false\)/);
 });
 
@@ -33,6 +34,9 @@ test('PostgreSQL schema includes CSE tables, uniqueness, ranking indexes, and im
   assert.match(schema, /idx_cse_daily_market_turnover/);
   assert.match(schema, /idx_cse_daily_market_trade_volume/);
   assert.match(schema, /idx_cse_daily_market_share_volume/);
+  assert.match(schema, /previous_close NUMERIC/);
+  assert.match(schema, /is_watch_list BOOLEAN/);
+  assert.match(schema, /source_market_timestamp_text TEXT/);
   assert.match(schema, /letters_attempted INTEGER/);
   assert.match(schema, /records_deduplicated INTEGER/);
   assert.match(schema, /validation_report JSONB/);
@@ -48,7 +52,11 @@ test('repository uses idempotent ON CONFLICT upserts for company, security, and 
 
 test('backend env is locked to Python HTTP alphabetical import mode', () => {
   const envSource = readProjectFile('config/env.ts');
-  assert.match(envSource, /CSE_IMPORT_FETCH_MODE:\s*z\.literal\(['"]python-http['"]\)/);
+  assert.match(envSource, /CSE_IMPORT_FETCH_MODE:\s*z\.literal\(['\"]python-http['\"]\)/);
+  assert.match(envSource, /CSE_TRADE_SUMMARY_SOURCE_URL/);
+  const serviceSource = readProjectFile('modules/cse/cse.service.ts');
+  assert.match(serviceSource, /csvDiscoveryEnabled:\s*true/);
+  assert.match(serviceSource, /htmlFallbackEnabled:\s*true/);
   assert.doesNotMatch(envSource, /CSE_IMPORT_CSV_URL|CSE_IMPORT_AZ_EXPORT_URL_TEMPLATE/);
   assert.doesNotMatch(envSource, /CSE_IMPORT_BROWSER_HEADLESS|CSE_IMPORT_BROWSER_TIMEOUT_MS|CSE_IMPORT_DOWNLOAD_TIMEOUT_MS/);
 });

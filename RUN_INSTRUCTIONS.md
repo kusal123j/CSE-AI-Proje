@@ -1,66 +1,32 @@
-# Run Instructions
+# RUN INSTRUCTIONS
 
-## Docker development
+## Docker/dev startup
 
-```bash
-cp .env.example .env
-# edit secrets if needed
-docker compose -f infra/docker-compose.yml up --build
-```
+Use your normal Docker Compose/Coolify flow. The new importer uses the existing backend and Python worker services.
 
-## Run database migration
-
-If migrations are not enabled on startup:
-
-```bash
-npm --prefix apps/backend run db:migrate
-```
-
-## Production artifact storage
-
-Raw CSE import artifacts are saved under `CSE_IMPORT_ARTIFACT_STORAGE_DIR`.
-Mount this path as a persistent Docker/Coolify volume in production.
-
-Example env:
+## Required env highlights
 
 ```env
-CSE_IMPORT_ARTIFACT_STORAGE_DIR=/app/storage/cse-imports
+CSE_TRADE_SUMMARY_ENABLED=true
+CSE_TRADE_SUMMARY_SOURCE_URL=https://www.cse.lk/equity/trade-summary
+CSE_TRADE_SUMMARY_SCHEDULER_ENABLED=false
+CSE_TRADE_SUMMARY_HOUR=15
+CSE_TRADE_SUMMARY_MINUTE=45
+CSE_TRADE_SUMMARY_WEEKDAYS_ONLY=true
+CSE_TRADE_SUMMARY_TIMEOUT_SECONDS=90
+CSE_TRADE_SUMMARY_CSV_URL=
 ```
 
-## Manual CSE import
+`CSE_TRADE_SUMMARY_CSV_URL` is optional. If empty, the Python worker tries to discover a CSV/export/download link from the Trade Summary page before HTML fallback.
 
-The manual endpoint is now non-blocking. It returns a `runId` immediately while the import continues in the backend process.
+## Manual run
 
 ```bash
-curl -X POST http://localhost:5000/api/cse/import/alphabetical/run \
+curl -X POST http://localhost:5000/api/cse/import/trade-summary/run \
   -H "Content-Type: application/json" \
-  -H "x-cse-import-secret: $CSE_IMPORT_INTERNAL_SECRET" \
-  -d '{}'
+  -d "{}"
 ```
 
-Alias route:
+Then check Mega Panel → CSE Import → Latest import run, Daily Snapshots, and Market Analytics.
 
-```bash
-curl -X POST http://localhost:5000/api/cse/import/run \
-  -H "Content-Type: application/json" \
-  -H "x-cse-import-secret: $CSE_IMPORT_INTERNAL_SECRET" \
-  -d '{}'
-```
-
-## Poll import status
-
-```bash
-curl http://localhost:5000/api/cse/import/runs/<RUN_ID>
-```
-
-## Check importer config
-
-```bash
-curl http://localhost:5000/api/cse/import/config
-```
-
-## Check import runs
-
-```bash
-curl http://localhost:5000/api/cse/import/runs
-```
+Expected on a normal trading day: imported rows normally above 100. Watch List count may be 0 if the live API/export does not expose watch-list status and HTML fallback is not used.

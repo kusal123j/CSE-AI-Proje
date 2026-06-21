@@ -15,21 +15,23 @@ function normalizePagination(page = 1, limit = 25) {
 }
 
 async function resolveDate(date?: string): Promise<string | null> {
-  if (date) return date;
+  if (date?.trim()) return date;
+  const tradeSummary = await query(`SELECT MAX(trading_date)::text AS trading_date FROM cse_daily_market_snapshots WHERE source_page = 'TRADE_SUMMARY'`);
+  if (tradeSummary.rows[0]?.trading_date) return tradeSummary.rows[0].trading_date;
   const result = await query(`SELECT MAX(trading_date)::text AS trading_date FROM cse_daily_market_snapshots`);
   return result.rows[0]?.trading_date ?? null;
 }
 
 
 async function freshnessMeta() {
-  const result = await query(`SELECT id, finished_at FROM cse_fetch_runs WHERE status = 'SUCCESS' ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1`);
+  const result = await query(`SELECT id, finished_at FROM cse_fetch_runs WHERE status IN ('SUCCESS', 'PARTIAL_SUCCESS') ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1`);
   const row = result.rows[0] ?? null;
   const finishedAt = row?.finished_at ? new Date(row.finished_at) : null;
   const isStale = !finishedAt || Date.now() - finishedAt.getTime() > env.CSE_IMPORT_STALE_AFTER_HOURS * 60 * 60 * 1000;
   return {
     lastImportedAt: finishedAt?.toISOString() ?? null,
     lastSuccessfulImportId: row?.id ?? null,
-    source: 'CSE Listed Company Directory - ALPHABETICAL' as const,
+    source: 'CSE Listed Company Directory - ALPHABETICAL + Trade Summary' as const,
     sourceUrl: env.CSE_IMPORT_SOURCE_URL,
     mode: env.CSE_IMPORT_FETCH_MODE,
     isStale,
@@ -147,18 +149,23 @@ export const cseAnalyticsService = {
          c.profile_url,
          latest.trading_date::text AS latest_snapshot_date,
          latest.last_traded_price,
+         latest.previous_close,
+         latest.open_price,
+         latest.high_price,
+         latest.low_price,
          latest.trade_volume,
          latest.share_volume,
          latest.turnover,
          latest.change_amount,
-         latest.change_percent
+         latest.change_percent,
+         latest.is_watch_list
        FROM cse_securities sec
        JOIN cse_companies c ON c.id = sec.company_id
        LEFT JOIN LATERAL (
          SELECT s.*
          FROM cse_daily_market_snapshots s
          WHERE s.security_id = sec.id
-         ORDER BY s.trading_date DESC
+         ORDER BY (s.source_page = 'TRADE_SUMMARY') DESC, s.trading_date DESC
          LIMIT 1
        ) latest ON true
        ${where}
@@ -175,6 +182,8 @@ export const cseAnalyticsService = {
     const { limit, offset } = normalizePagination(options.page, options.limit);
     const params: unknown[] = [date];
     let where = `WHERE s.trading_date = $1::date`;
+    const tradeSummaryPreferred = !options.date?.trim();
+    if (tradeSummaryPreferred) where += ` AND s.source_page = 'TRADE_SUMMARY'`;
     if (options.search?.trim()) {
       params.push(`%${options.search.trim().toUpperCase()}%`);
       where += ` AND (s.symbol LIKE $${params.length} OR c.normalized_name LIKE $${params.length})`;
@@ -193,22 +202,25 @@ export const cseAnalyticsService = {
     const result = await query(
       `${baseSnapshotSelect()}
        WHERE s.trading_date = $1::date AND s.symbol = $2
+       ORDER BY (s.source_page = 'TRADE_SUMMARY') DESC
        LIMIT 1`,
       [resolvedDate, symbol.trim().toUpperCase()]
     );
     return withFreshness(result.rows[0] ?? null);
   },
 
-  async rank(options: MarketQueryOptions & { type: 'gainers' | 'losers' | 'topTurnover' | 'topTradeVolume' | 'topShareVolume' }) {
+  async rank(options: MarketQueryOptions & { type: 'gainers' | 'losers' | 'topTurnover' | 'topTradeVolume' | 'topShareVolume' | 'watchListMovers' }) {
     const date = await resolveDate(options.date);
     if (!date) return withFreshness([]);
     const { limit, offset } = normalizePagination(options.page, options.limit ?? 25);
-    const orderMap: Record<'gainers' | 'losers' | 'topTurnover' | 'topTradeVolume' | 'topShareVolume', string> = {
-      gainers: `WHERE s.trading_date = $1::date AND (s.change_amount > 0 OR s.change_percent > 0) ORDER BY s.change_percent DESC NULLS LAST, s.change_amount DESC NULLS LAST`,
-      losers: `WHERE s.trading_date = $1::date AND (s.change_amount < 0 OR s.change_percent < 0) ORDER BY s.change_percent ASC NULLS LAST, s.change_amount ASC NULLS LAST`,
-      topTurnover: `WHERE s.trading_date = $1::date AND s.turnover IS NOT NULL ORDER BY s.turnover DESC NULLS LAST`,
-      topTradeVolume: `WHERE s.trading_date = $1::date AND s.trade_volume IS NOT NULL ORDER BY s.trade_volume DESC NULLS LAST`,
-      topShareVolume: `WHERE s.trading_date = $1::date AND s.share_volume IS NOT NULL ORDER BY s.share_volume DESC NULLS LAST`
+    const sourceFilter = `s.source_page = 'TRADE_SUMMARY'`;
+    const orderMap: Record<'gainers' | 'losers' | 'topTurnover' | 'topTradeVolume' | 'topShareVolume' | 'watchListMovers', string> = {
+      gainers: `WHERE s.trading_date = $1::date AND ${sourceFilter} AND (s.change_amount > 0 OR s.change_percent > 0) ORDER BY s.change_percent DESC NULLS LAST, s.change_amount DESC NULLS LAST`,
+      losers: `WHERE s.trading_date = $1::date AND ${sourceFilter} AND (s.change_amount < 0 OR s.change_percent < 0) ORDER BY s.change_percent ASC NULLS LAST, s.change_amount ASC NULLS LAST`,
+      topTurnover: `WHERE s.trading_date = $1::date AND ${sourceFilter} AND s.turnover IS NOT NULL ORDER BY s.turnover DESC NULLS LAST`,
+      topTradeVolume: `WHERE s.trading_date = $1::date AND ${sourceFilter} AND s.trade_volume IS NOT NULL ORDER BY s.trade_volume DESC NULLS LAST`,
+      topShareVolume: `WHERE s.trading_date = $1::date AND ${sourceFilter} AND s.share_volume IS NOT NULL ORDER BY s.share_volume DESC NULLS LAST`,
+      watchListMovers: `WHERE s.trading_date = $1::date AND ${sourceFilter} AND s.is_watch_list = true ORDER BY ABS(COALESCE(s.change_percent, 0)) DESC NULLS LAST, s.trade_volume DESC NULLS LAST`
     };
 
     const result = await query(
@@ -216,5 +228,45 @@ export const cseAnalyticsService = {
       [date, limit, offset]
     );
     return withFreshness(result.rows);
+  },
+
+  async marketBreadth(options: Pick<MarketQueryOptions, 'date'> = {}) {
+    const date = await resolveDate(options.date);
+    if (!date) {
+      return withFreshness({
+        tradingDate: null,
+        gainersCount: 0,
+        losersCount: 0,
+        unchangedCount: 0,
+        watchListCount: 0,
+        activeSecuritiesCount: 0,
+        totalShareVolume: 0,
+        totalTradeVolume: 0
+      });
+    }
+    const result = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE change_amount > 0 OR change_percent > 0)::int AS gainers_count,
+         COUNT(*) FILTER (WHERE change_amount < 0 OR change_percent < 0)::int AS losers_count,
+         COUNT(*) FILTER (WHERE COALESCE(change_amount, 0) = 0 AND COALESCE(change_percent, 0) = 0)::int AS unchanged_count,
+         COUNT(*) FILTER (WHERE is_watch_list = true)::int AS watch_list_count,
+         COUNT(*)::int AS active_securities_count,
+         COALESCE(SUM(share_volume), 0)::text AS total_share_volume,
+         COALESCE(SUM(trade_volume), 0)::text AS total_trade_volume
+       FROM cse_daily_market_snapshots
+       WHERE trading_date = $1::date AND source_page = 'TRADE_SUMMARY'`,
+      [date]
+    );
+    const row = result.rows[0] ?? {};
+    return withFreshness({
+      tradingDate: date,
+      gainersCount: Number(row.gainers_count ?? 0),
+      losersCount: Number(row.losers_count ?? 0),
+      unchangedCount: Number(row.unchanged_count ?? 0),
+      watchListCount: Number(row.watch_list_count ?? 0),
+      activeSecuritiesCount: Number(row.active_securities_count ?? 0),
+      totalShareVolume: Number(row.total_share_volume ?? 0),
+      totalTradeVolume: Number(row.total_trade_volume ?? 0)
+    });
   }
 };

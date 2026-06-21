@@ -62,12 +62,12 @@ export function buildAzProgress(run?: CseFetchRun | null, rawSummary?: CseRawRun
         status = 'Parsed';
         message = `Parsed ${validationItem.rowCount ?? 0} rows. Attempts: ${validationItem.attempts ?? 1}.`;
       }
-    } else if (failed.has(letter)) {
-      status = 'Failed';
-      message = 'Letter failed according to latest fetch-run warnings.';
     } else if (rawLetters.has(letter)) {
       status = 'Parsed';
       message = 'A raw per-letter artifact was found for this letter.';
+    } else if (failed.has(letter)) {
+      status = 'Failed';
+      message = 'Letter failed according to latest fetch-run warnings.';
     } else if (!run) {
       status = 'Pending';
       message = 'No fetch run is available yet.';

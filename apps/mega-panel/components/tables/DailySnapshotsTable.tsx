@@ -16,19 +16,28 @@ function changeTone(value: unknown) {
   return 'muted' as const;
 }
 
+function isWatchList(value: unknown) {
+  return value === true || String(value).toLowerCase() === 'true';
+}
+
 export function DailySnapshotsTable({ snapshots }: { snapshots: CseDailySnapshot[] }) {
   const [raw, setRaw] = useState<CseDailySnapshot | null>(null);
   const columns: ColumnDef<CseDailySnapshot, unknown>[] = [
     { header: 'Date', cell: ({ row }) => formatDate(row.original.trading_date || undefined) },
     { header: 'Symbol', cell: ({ row }) => <span className="font-mono font-bold">{row.original.symbol}</span> },
     { header: 'Company', cell: ({ row }) => row.original.company_name || '—' },
-    { header: 'Last price', cell: ({ row }) => formatCurrency(row.original.last_traded_price) },
-    { header: 'Trade volume', cell: ({ row }) => formatNumber(row.original.trade_volume) },
-    { header: 'Share volume', cell: ({ row }) => formatNumber(row.original.share_volume) },
-    { header: 'Turnover', cell: ({ row }) => formatCurrency(row.original.turnover) },
+    { header: 'Previous close', cell: ({ row }) => formatCurrency(row.original.previous_close) },
+    { header: 'Open', cell: ({ row }) => formatCurrency(row.original.open_price) },
+    { header: 'High', cell: ({ row }) => formatCurrency(row.original.high_price) },
+    { header: 'Low', cell: ({ row }) => formatCurrency(row.original.low_price) },
+    { header: 'Last trade', cell: ({ row }) => formatCurrency(row.original.last_traded_price) },
     { header: 'Change Rs', cell: ({ row }) => <Badge tone={changeTone(row.original.change_amount)}>{formatCurrency(row.original.change_amount)}</Badge> },
     { header: 'Change %', cell: ({ row }) => <Badge tone={changeTone(row.original.change_percent)}>{formatPercent(row.original.change_percent)}</Badge> },
-    { header: 'Source letter', cell: ({ row }) => row.original.source_letter || '—' },
+    { header: 'Share volume', cell: ({ row }) => formatNumber(row.original.share_volume) },
+    { header: 'Trade volume', cell: ({ row }) => formatNumber(row.original.trade_volume) },
+    { header: 'Watch List', cell: ({ row }) => isWatchList(row.original.is_watch_list) ? <Badge tone="warning">Watch List</Badge> : '—' },
+    { header: 'Source', cell: ({ row }) => <Badge tone={row.original.source_page === 'TRADE_SUMMARY' ? 'success' : 'info'}>{row.original.source_page || row.original.source_letter || '—'}</Badge> },
+    { header: 'Market timestamp', cell: ({ row }) => row.original.source_market_timestamp_text || formatDate(row.original.market_timestamp || undefined) },
     { header: 'Raw row', cell: ({ row }) => <Button size="sm" variant="secondary" onClick={() => setRaw(row.original)}>View</Button> }
   ];
   return (

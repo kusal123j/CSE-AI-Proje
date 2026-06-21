@@ -1,11 +1,12 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../../config/database';
-import { CseImportValidationReport, ParsedCseAlphabeticalRow } from './cse.types';
+import { CseImportValidationReport, ParsedCseAlphabeticalRow, ParsedCseTradeSummaryRow } from './cse.types';
 
 export interface FetchRunInput {
   sourceUrl: string;
   fetchMode: string;
   triggerType?: 'manual' | 'scheduled';
+  source?: string;
 }
 
 export interface PromotionResult {
@@ -19,10 +20,10 @@ export interface PromotionResult {
 
 export async function createFetchRun(input: FetchRunInput) {
   const result = await query(
-    `INSERT INTO cse_fetch_runs (source_url, fetch_mode, trigger_type, status)
-     VALUES ($1, $2, $3, 'RUNNING')
+    `INSERT INTO cse_fetch_runs (source, source_url, fetch_mode, trigger_type, status)
+     VALUES ($4, $1, $2, $3, 'RUNNING')
      RETURNING *`,
-    [input.sourceUrl, input.fetchMode, input.triggerType ?? 'manual']
+    [input.sourceUrl, input.fetchMode, input.triggerType ?? 'manual', input.source ?? 'CSE_ALPHABETICAL']
   );
   return result.rows[0];
 }
@@ -30,7 +31,7 @@ export async function createFetchRun(input: FetchRunInput) {
 export async function finishFetchRun(
   runId: string,
   data: {
-    status: 'SUCCESS' | 'FAILED';
+    status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED';
     recordsFound: number;
     companiesCreated: number;
     companiesUpdated: number;
@@ -71,7 +72,7 @@ export async function finishFetchRun(
          records_before_deduplication = $17,
          records_deduplicated = $18,
          validation_report = $19::jsonb,
-         promoted_at = CASE WHEN $2 = 'SUCCESS' THEN NOW() ELSE promoted_at END
+         promoted_at = CASE WHEN $2 IN ('SUCCESS', 'PARTIAL_SUCCESS') THEN NOW() ELSE promoted_at END
      WHERE id = $1
      RETURNING *`,
     [
@@ -406,3 +407,148 @@ export async function latestTradingDate(): Promise<string | null> {
   const result = await query(`SELECT MAX(trading_date)::text AS trading_date FROM cse_daily_market_snapshots`);
   return result.rows[0]?.trading_date ?? null;
 }
+function tradeSummaryCompanyRow(row: ParsedCseTradeSummaryRow): ParsedCseAlphabeticalRow {
+  return {
+    companyName: row.companyName,
+    normalizedCompanyName: row.normalizedCompanyName,
+    symbol: row.symbol,
+    normalizedSymbol: row.normalizedSymbol,
+    profileUrl: null,
+    logoUrl: null,
+    lastTradedPrice: row.lastTradedPrice,
+    tradeVolume: row.tradeVolume,
+    shareVolume: row.shareVolume,
+    turnover: row.turnover ?? null,
+    changeAmount: row.changeAmount,
+    changePercent: row.changePercent,
+    rawRow: row.rawRow
+  };
+}
+
+async function upsertTradeSummarySnapshotWithClient(
+  client: PoolClient,
+  securityId: string,
+  row: ParsedCseTradeSummaryRow,
+  tradingDate: string,
+  runId: string,
+  marketTimestamp?: string | null,
+  sourceMarketTimestampText?: string | null
+) {
+  const result = await client.query(
+    `INSERT INTO cse_daily_market_snapshots (
+       security_id, symbol, trading_date, last_traded_price, previous_close, open_price, high_price,
+       low_price, trade_volume, share_volume, turnover, change_amount, change_percent, is_watch_list,
+       market_timestamp, source_market_timestamp_text, import_run_id, source_page, raw_row, fetched_at
+     ) VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::timestamptz, $16, $17, 'TRADE_SUMMARY', $18::jsonb, NOW())
+     ON CONFLICT (symbol, trading_date)
+     DO UPDATE SET
+       security_id = EXCLUDED.security_id,
+       last_traded_price = EXCLUDED.last_traded_price,
+       previous_close = EXCLUDED.previous_close,
+       open_price = EXCLUDED.open_price,
+       high_price = EXCLUDED.high_price,
+       low_price = EXCLUDED.low_price,
+       trade_volume = EXCLUDED.trade_volume,
+       share_volume = EXCLUDED.share_volume,
+       turnover = EXCLUDED.turnover,
+       change_amount = EXCLUDED.change_amount,
+       change_percent = EXCLUDED.change_percent,
+       is_watch_list = EXCLUDED.is_watch_list,
+       market_timestamp = EXCLUDED.market_timestamp,
+       source_market_timestamp_text = EXCLUDED.source_market_timestamp_text,
+       import_run_id = EXCLUDED.import_run_id,
+       source_page = EXCLUDED.source_page,
+       raw_row = EXCLUDED.raw_row,
+       fetched_at = NOW()
+     RETURNING *, (xmax = 0) AS inserted`,
+    [
+      securityId,
+      row.symbol,
+      tradingDate,
+      row.lastTradedPrice,
+      row.previousClose,
+      row.openPrice,
+      row.highPrice,
+      row.lowPrice,
+      row.tradeVolume,
+      row.shareVolume,
+      row.turnover ?? null,
+      row.changeAmount,
+      row.changePercent,
+      row.isWatchList,
+      marketTimestamp ?? null,
+      sourceMarketTimestampText ?? null,
+      runId,
+      JSON.stringify({ ...row.rawRow, sourcePage: 'TRADE_SUMMARY', sourceMarketTimestampText: sourceMarketTimestampText ?? null, watchListDetectionSource: row.watchListDetectionSource ?? null })
+    ]
+  );
+  return result.rows[0];
+}
+
+export async function promoteTradeSummaryRows(
+  runId: string,
+  rows: ParsedCseTradeSummaryRow[],
+  tradingDate: string,
+  options: { marketTimestamp?: string | null; sourceMarketTimestampText?: string | null } = {}
+): Promise<PromotionResult & { warnings: string[] }> {
+  const client = await pool.connect();
+  const result: PromotionResult & { warnings: string[] } = {
+    companiesCreated: 0,
+    companiesUpdated: 0,
+    securitiesCreated: 0,
+    securitiesUpdated: 0,
+    snapshotsCreated: 0,
+    snapshotsUpdated: 0,
+    warnings: []
+  };
+
+  try {
+    await client.query('BEGIN');
+    for (const row of rows) {
+      const companyRow = tradeSummaryCompanyRow(row);
+      const existingSecurity = await client.query(`SELECT sec.*, c.id AS company_id FROM cse_securities sec JOIN cse_companies c ON c.id = sec.company_id WHERE sec.normalized_symbol = $1 LIMIT 1`, [row.normalizedSymbol]);
+      let company;
+      let security;
+
+      if (existingSecurity.rows[0]) {
+        security = existingSecurity.rows[0];
+        const updatedCompany = await upsertCompanyWithClient(client, companyRow, runId);
+        company = updatedCompany;
+        if (updatedCompany.inserted) result.companiesCreated += 1;
+        else result.companiesUpdated += 1;
+        const updatedSecurity = await upsertSecurityWithClient(client, company.id, companyRow, runId);
+        security = updatedSecurity;
+        if (updatedSecurity.inserted) result.securitiesCreated += 1;
+        else result.securitiesUpdated += 1;
+      } else {
+        result.warnings.push(`Unknown Trade Summary symbol ${row.symbol}; created placeholder company/security from Trade Summary row.`);
+        company = await upsertCompanyWithClient(client, companyRow, runId);
+        if (company.inserted) result.companiesCreated += 1;
+        else result.companiesUpdated += 1;
+        security = await upsertSecurityWithClient(client, company.id, companyRow, runId);
+        if (security.inserted) result.securitiesCreated += 1;
+        else result.securitiesUpdated += 1;
+      }
+
+      const snapshot = await upsertTradeSummarySnapshotWithClient(
+        client,
+        security.id,
+        row,
+        tradingDate,
+        runId,
+        options.marketTimestamp ?? null,
+        options.sourceMarketTimestampText ?? null
+      );
+      if (snapshot.inserted) result.snapshotsCreated += 1;
+      else result.snapshotsUpdated += 1;
+    }
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+

@@ -95,6 +95,55 @@ export interface FetchAlphabeticalResult {
   validationReport?: CseImportValidationReport;
 }
 
+
+export interface ParsedCseTradeSummaryRow {
+  companyName: string;
+  normalizedCompanyName: string;
+  symbol: string;
+  normalizedSymbol: string;
+  shareVolume: number | null;
+  tradeVolume: number | null;
+  previousClose: number | null;
+  openPrice: number | null;
+  highPrice: number | null;
+  lowPrice: number | null;
+  lastTradedPrice: number | null;
+  turnover?: number | null;
+  changeAmount: number | null;
+  changePercent: number | null;
+  isWatchList: boolean;
+  watchListDetectionSource?: string | null;
+  rawRow: Record<string, unknown>;
+}
+
+export interface FetchTradeSummaryResult {
+  rows: ParsedCseTradeSummaryRow[];
+  rawContent: string;
+  fetchMode: CseFetchMode;
+  fetchStrategy: 'api' | 'csv' | 'html' | string;
+  sourceUrl: string;
+  warnings: string[];
+  rawStoragePath: string;
+  rawArtifactPath: string;
+  checksum?: string | null;
+  marketTimestamp?: string | null;
+  sourceMarketTimestampText?: string | null;
+  recordsBeforeDeduplication: number;
+  recordsDeduplicated: number;
+  duplicateSymbols?: string[];
+}
+
+export interface CseMarketBreadthSummary {
+  tradingDate: string | null;
+  gainersCount: number;
+  losersCount: number;
+  unchangedCount: number;
+  watchListCount: number;
+  activeSecuritiesCount: number;
+  totalShareVolume: number;
+  totalTradeVolume: number;
+}
+
 export interface CseImportResult {
   runId: string;
   status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED';
@@ -132,7 +181,7 @@ export interface CseImportStartResult {
 export interface CseFreshnessMeta {
   lastImportedAt: string | null;
   lastSuccessfulImportId: string | null;
-  source: 'CSE Listed Company Directory - ALPHABETICAL';
+  source: string;
   sourceUrl: string;
   mode: CseFetchMode;
   isStale: boolean;

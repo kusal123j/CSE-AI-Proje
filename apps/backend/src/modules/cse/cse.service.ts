@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
-import { fetchAlphabeticalRows } from './cse.fetcher';
+import { fetchAlphabeticalRows, fetchTradeSummaryRows } from './cse.fetcher';
 import {
   countRunningFetchRuns,
   createFetchRun,
@@ -12,6 +12,7 @@ import {
   latestSuccessfulFetchRun,
   listImportArtifacts,
   promoteStagedAlphabeticalRows,
+  promoteTradeSummaryRows,
   saveAlphabeticalRowsToStage,
   saveImportArtifact
 } from './cse.repository';
@@ -19,6 +20,7 @@ import { CseImportResult, CseImportStartResult } from './cse.types';
 import { validateFetchedAlphabeticalResult } from './cse.validator';
 
 let inProcessImport = false;
+let inProcessTradeSummaryImport = false;
 
 function sriLankaDateString(date = new Date()): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -45,6 +47,23 @@ function parseWarnings(value: unknown): string[] {
 
 function safeRelativePath(filePath: string): string {
   return path.isAbsolute(filePath) ? path.relative(process.cwd(), filePath) : filePath;
+}
+
+export function summarizeTradeSummaryCompletion(input: {
+  rowCount: number;
+  fetchedWarnings?: string[];
+  promotionWarnings?: string[];
+  minExpectedRows: number;
+}): { status: 'SUCCESS' | 'PARTIAL_SUCCESS'; warnings: string[] } {
+  const warnings = [...(input.fetchedWarnings ?? []), ...(input.promotionWarnings ?? [])];
+  if (input.rowCount < input.minExpectedRows) {
+    const rowCountWarning = `Trade Summary row count ${input.rowCount} is below configured minimum ${input.minExpectedRows}.`;
+    if (!warnings.includes(rowCountWarning)) warnings.push(rowCountWarning);
+  }
+  return {
+    status: warnings.length > 0 ? 'PARTIAL_SUCCESS' : 'SUCCESS',
+    warnings
+  };
 }
 
 async function collectFilesRecursive(directory: string) {
@@ -216,6 +235,101 @@ async function executeAlphabeticalImport(runId: string, input: { tradingDate: st
   }
 }
 
+async function executeTradeSummaryImport(runId: string, input: { tradingDate: string; triggerType: 'manual' | 'scheduled' }): Promise<CseImportResult> {
+  let runAlreadyFinished = false;
+  try {
+    const fetched = await fetchTradeSummaryRows({ runId, tradingDate: input.tradingDate });
+    if (fetched.rows.length === 0) {
+      throw new AppError(502, 'CSE Trade Summary import returned an empty dataset.');
+    }
+
+    const promoted = await promoteTradeSummaryRows(runId, fetched.rows, input.tradingDate, {
+      marketTimestamp: fetched.marketTimestamp ?? null,
+      sourceMarketTimestampText: fetched.sourceMarketTimestampText ?? null
+    });
+
+    await saveImportArtifact({
+      runId,
+      artifactType: 'trade_summary_raw_response',
+      filePath: fetched.rawArtifactPath,
+      checksum: fetched.checksum ?? null,
+      rowCount: fetched.rows.length
+    });
+    await saveImportArtifact({
+      runId,
+      artifactType: 'trade_summary_normalized_json',
+      filePath: path.join(fetched.rawStoragePath, 'normalized', 'trade-summary-normalized.json'),
+      rowCount: fetched.rows.length
+    });
+
+    const completion = summarizeTradeSummaryCompletion({
+      rowCount: fetched.rows.length,
+      fetchedWarnings: fetched.warnings,
+      promotionWarnings: promoted.warnings,
+      minExpectedRows: env.CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS
+    });
+    const status = completion.status;
+    const result: CseImportResult = {
+      runId,
+      status,
+      recordsFound: fetched.rows.length,
+      recordsBeforeDeduplication: fetched.recordsBeforeDeduplication,
+      recordsDeduplicated: fetched.recordsDeduplicated,
+      companiesCreated: promoted.companiesCreated,
+      companiesUpdated: promoted.companiesUpdated,
+      securitiesCreated: promoted.securitiesCreated,
+      securitiesUpdated: promoted.securitiesUpdated,
+      snapshotsCreated: promoted.snapshotsCreated,
+      snapshotsUpdated: promoted.snapshotsUpdated,
+      recordsFailed: 0,
+      warnings: completion.warnings,
+      rawFilePath: fetched.rawStoragePath,
+      rawStoragePath: fetched.rawStoragePath,
+      tradingDate: input.tradingDate,
+      fetchMode: fetched.fetchMode
+    };
+
+    await finishFetchRun(runId, {
+      status,
+      recordsFound: result.recordsFound,
+      companiesCreated: result.companiesCreated,
+      companiesUpdated: result.companiesUpdated,
+      securitiesCreated: result.securitiesCreated,
+      securitiesUpdated: result.securitiesUpdated,
+      snapshotsCreated: result.snapshotsCreated,
+      snapshotsUpdated: result.snapshotsUpdated,
+      recordsFailed: 0,
+      warnings: result.warnings,
+      rawFilePath: fetched.rawStoragePath,
+      recordsBeforeDeduplication: fetched.recordsBeforeDeduplication,
+      recordsDeduplicated: fetched.recordsDeduplicated,
+      validationReport: null
+    });
+    runAlreadyFinished = true;
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown CSE Trade Summary import error';
+    if (!runAlreadyFinished) {
+      await finishFetchRun(runId, {
+        status: 'FAILED',
+        recordsFound: 0,
+        companiesCreated: 0,
+        companiesUpdated: 0,
+        securitiesCreated: 0,
+        securitiesUpdated: 0,
+        snapshotsCreated: 0,
+        snapshotsUpdated: 0,
+        recordsFailed: 0,
+        errorMessage: message,
+        warnings: []
+      }).catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    inProcessTradeSummaryImport = false;
+  }
+}
+
 export const cseService = {
   async startAlphabeticalImportJob(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportStartResult> {
     if (inProcessImport || (await countRunningFetchRuns()) > 0) {
@@ -256,6 +370,50 @@ export const cseService = {
     return executeAlphabeticalImport(run.id, { tradingDate, triggerType });
   },
 
+  async startTradeSummaryImportJob(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportStartResult> {
+    if (!env.CSE_TRADE_SUMMARY_ENABLED) {
+      throw new AppError(403, 'CSE Trade Summary importer is disabled by CSE_TRADE_SUMMARY_ENABLED=false.');
+    }
+    if (inProcessTradeSummaryImport || inProcessImport || (await countRunningFetchRuns()) > 0) {
+      throw new AppError(409, 'A CSE import is already running. Wait until the current import finishes before starting another one.');
+    }
+
+    inProcessTradeSummaryImport = true;
+    const triggerType = input?.triggerType ?? 'manual';
+    const tradingDate = input?.tradingDate ?? sriLankaDateString();
+    const run = await createFetchRun({ source: 'CSE_TRADE_SUMMARY', sourceUrl: env.CSE_TRADE_SUMMARY_SOURCE_URL, fetchMode: 'python-http', triggerType });
+
+    setImmediate(() => {
+      executeTradeSummaryImport(run.id, { tradingDate, triggerType }).catch((error) => {
+        console.error('CSE Trade Summary background import failed', error);
+      });
+    });
+
+    return {
+      ok: true,
+      runId: run.id,
+      status: 'RUNNING',
+      triggerType,
+      tradingDate,
+      message: 'CSE Trade Summary import started. Poll /api/cse/import/runs/:id for status.'
+    };
+  },
+
+  async runTradeSummaryImport(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportResult> {
+    if (!env.CSE_TRADE_SUMMARY_ENABLED) {
+      throw new AppError(403, 'CSE Trade Summary importer is disabled by CSE_TRADE_SUMMARY_ENABLED=false.');
+    }
+    if (inProcessTradeSummaryImport || inProcessImport || (await countRunningFetchRuns()) > 0) {
+      throw new AppError(409, 'A CSE import is already running. Wait until the current import finishes before starting another one.');
+    }
+
+    inProcessTradeSummaryImport = true;
+    const triggerType = input?.triggerType ?? 'manual';
+    const tradingDate = input?.tradingDate ?? sriLankaDateString();
+    const run = await createFetchRun({ source: 'CSE_TRADE_SUMMARY', sourceUrl: env.CSE_TRADE_SUMMARY_SOURCE_URL, fetchMode: 'python-http', triggerType });
+    return executeTradeSummaryImport(run.id, { tradingDate, triggerType });
+  },
+
   async importConfig() {
     const internalSecretConfigured = Boolean(env.CSE_IMPORT_INTERNAL_SECRET.trim());
     const lastImport = await latestFetchRun();
@@ -264,6 +422,25 @@ export const cseService = {
       mode: env.CSE_IMPORT_FETCH_MODE,
       source: 'CSE_LISTED_COMPANY_DIRECTORY_ALPHABETICAL',
       sourceUrl: env.CSE_IMPORT_SOURCE_URL,
+      tradeSummary: {
+        enabled: env.CSE_TRADE_SUMMARY_ENABLED,
+        source: 'CSE_TRADE_SUMMARY',
+        sourceUrl: env.CSE_TRADE_SUMMARY_SOURCE_URL,
+        fetchGranularity: 'FULL_TRADE_SUMMARY_SNAPSHOT',
+        directApiExportAllowed: true,
+        csvFallbackConfigured: Boolean(env.CSE_TRADE_SUMMARY_CSV_URL),
+        csvDiscoveryEnabled: true,
+        htmlFallbackEnabled: true,
+        browserAutomationEnabled: false,
+        playwrightEnabled: false,
+        schedulerEnabled: env.CSE_TRADE_SUMMARY_SCHEDULER_ENABLED,
+        weekdaysOnly: env.CSE_TRADE_SUMMARY_WEEKDAYS_ONLY,
+        scheduledHour: env.CSE_TRADE_SUMMARY_HOUR,
+        scheduledMinute: env.CSE_TRADE_SUMMARY_MINUTE,
+        timeoutSeconds: env.CSE_TRADE_SUMMARY_TIMEOUT_SECONDS,
+        minExpectedRows: env.CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS,
+        artifactStorageDir: env.CSE_TRADE_SUMMARY_ARTIFACT_STORAGE_DIR
+      },
       fetchGranularity: 'A_Z_LETTER_BY_LETTER',
       fullExportSupported: false,
       directApiExportAllowed: true,

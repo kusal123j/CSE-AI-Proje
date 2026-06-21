@@ -1,20 +1,22 @@
 'use client';
 
-import { getMarketGainers, getMarketLosers, getTopShareVolume, getTopTradeVolume, getTopTurnover } from '@/lib/api/cse';
+import { getMarketBreadth, getMarketGainers, getMarketLosers, getTopShareVolume, getTopTradeVolume, getTopTurnover, getWatchListMovers } from '@/lib/api/cse';
 import { useAsyncData } from './useAsyncData';
 
 export function useAnalytics(date?: string, limit = 10) {
   return useAsyncData(
     async () => {
       const params = { date, limit };
-      const [gainers, losers, topTurnover, topTradeVolume, topShareVolume] = await Promise.all([
+      const [breadth, gainers, losers, topTurnover, topTradeVolume, topShareVolume, watchListMovers] = await Promise.all([
+        getMarketBreadth({ date }),
         getMarketGainers(params),
         getMarketLosers(params),
         getTopTurnover(params),
         getTopTradeVolume(params),
-        getTopShareVolume(params)
+        getTopShareVolume(params),
+        getWatchListMovers(params)
       ]);
-      return { gainers, losers, topTurnover, topTradeVolume, topShareVolume };
+      return { breadth, gainers, losers, topTurnover, topTradeVolume, topShareVolume, watchListMovers };
     },
     [date, limit]
   );
