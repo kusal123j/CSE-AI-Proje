@@ -3,6 +3,7 @@ import type { CseDashboardSummary } from '@/lib/types/dashboard';
 import type {
   CseCompany,
   CseDailySnapshot,
+  CseDailyMarketSummary,
   CseDataResponse,
   CseFetchRun,
   CseGicsClassificationRow,
@@ -55,6 +56,13 @@ export function runTradeSummaryImport(input?: { tradingDate?: string }) {
 
 export function runGicsImport(input?: { tradingDate?: string }) {
   return panelFetch<unknown>('/api/cse/import/gics/run', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {})
+  });
+}
+
+export function runDailyMarketSummaryImport(input?: { tradingDate?: string }) {
+  return panelFetch<unknown>('/api/cse/import/daily-market-summary/run', {
     method: 'POST',
     body: JSON.stringify(input ?? {})
   });
@@ -130,4 +138,12 @@ export function getGicsIndices(params?: Pick<ListParams, 'limit'>) {
 
 export function getGicsClassifications(params?: Pick<ListParams, 'limit' | 'search'>) {
   return apiFetch<CseGicsClassificationRow[]>(`gics/classifications${toQueryString(params)}`);
+}
+
+export function getLatestDailyMarketSummary() {
+  return apiFetch<CseDailyMarketSummary | null>('daily-market-summary/latest');
+}
+
+export function getDailyMarketSummaryHistory(params?: Pick<ListParams, 'limit'> & { from?: string; to?: string }) {
+  return apiFetch<CseDailyMarketSummary[]>(`daily-market-summary/history${toQueryString(params)}`);
 }

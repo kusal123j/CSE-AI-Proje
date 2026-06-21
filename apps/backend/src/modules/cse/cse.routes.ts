@@ -10,6 +10,7 @@ cseRoutes.get('/import/config', cseImportReadAccessGuard, asyncHandler(cseContro
 cseRoutes.post('/import/alphabetical/run', cseImportAccessGuard, asyncHandler(cseController.runImport));
 cseRoutes.post('/import/trade-summary/run', cseImportAccessGuard, asyncHandler(cseController.runTradeSummaryImport));
 cseRoutes.post('/import/gics/run', cseImportAccessGuard, asyncHandler(cseController.runGicsImport));
+cseRoutes.post('/import/daily-market-summary/run', cseImportAccessGuard, asyncHandler(cseController.runDailyMarketSummaryImport));
 cseRoutes.post('/import/run', cseImportAccessGuard, asyncHandler(cseController.runImport));
 cseRoutes.get('/import/runs', cseImportReadAccessGuard, asyncHandler(cseController.listFetchRuns));
 cseRoutes.get('/import/runs/:id/raw-summary', cseImportReadAccessGuard, asyncHandler(cseController.rawRunSummary));
@@ -19,6 +20,9 @@ cseRoutes.get('/import/runs/:id', cseImportReadAccessGuard, asyncHandler(cseCont
 cseRoutes.get('/companies', asyncHandler(cseController.listCompanies));
 cseRoutes.get('/securities', asyncHandler(cseController.listSecurities));
 cseRoutes.get('/market/latest-date', asyncHandler(cseController.latestDate));
+cseRoutes.get('/daily-market-summary/latest', cseImportReadAccessGuard, asyncHandler(cseController.latestDailyMarketSummary));
+cseRoutes.get('/daily-market-summary/history', cseImportReadAccessGuard, asyncHandler(cseController.dailyMarketSummaryHistory));
+cseRoutes.get('/daily-market-summary', cseImportReadAccessGuard, asyncHandler(cseController.getDailyMarketSummary));
 cseRoutes.get('/market/daily', asyncHandler(cseController.listDaily));
 cseRoutes.get('/market/daily/:symbol', asyncHandler(cseController.getBySymbol));
 cseRoutes.get('/market/gainers', asyncHandler(cseController.gainers));

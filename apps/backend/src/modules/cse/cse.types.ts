@@ -320,3 +320,58 @@ export interface CseGicsPromotionResult {
   unmappedSymbols: string[];
   warnings: string[];
 }
+
+export interface CseDailyMarketSummaryValidationReport {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  requiredFields: string[];
+  parsedFieldCount: number;
+  promotionAllowed: boolean;
+}
+
+export interface CseDailyMarketSummaryCalculatedMetrics {
+  aspiChange: number | null;
+  aspiChangePercent: number | null;
+  spSl20Change: number | null;
+  spSl20ChangePercent: number | null;
+  foreignNetFlow: number | null;
+  domesticNetFlow: number | null;
+  turnoverChange: number | null;
+  turnoverChangePercent: number | null;
+  marketCapChange: number | null;
+  marketCapChangePercent: number | null;
+  tradedCompanyParticipationPercent: number | null;
+}
+
+export interface CseDailyMarketSummary {
+  tradingDate: string;
+  sourceUrl: string;
+  sourceAsOfText?: string | null;
+  fetchMode: CseFetchMode;
+  fetchStrategy: string;
+  checksum?: string | null;
+  rawPayload: Record<string, unknown>;
+  validationReport: CseDailyMarketSummaryValidationReport;
+  warnings: string[];
+  summary: Record<string, number | string | null | undefined>;
+  calculated: CseDailyMarketSummaryCalculatedMetrics;
+}
+
+export interface FetchDailyMarketSummaryResult {
+  sourceUrl: string;
+  fetchMode: CseFetchMode;
+  fetchStrategy: string;
+  activeFetchStrategy?: string | null;
+  tradingDate: string;
+  sourceAsOfText?: string | null;
+  checksum?: string | null;
+  warnings: string[];
+  validationReport: CseDailyMarketSummaryValidationReport;
+  rawPayload: Record<string, unknown>;
+  summary: Record<string, number | string | null | undefined>;
+  rawStoragePath: string;
+  rawArtifactPath: string;
+  normalizedArtifactPath: string;
+  validationArtifactPath: string;
+}

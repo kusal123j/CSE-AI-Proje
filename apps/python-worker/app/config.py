@@ -39,6 +39,12 @@ class Settings:
     )
     cse_trade_summary_csv_url: str = os.getenv("CSE_TRADE_SUMMARY_CSV_URL", "")
     cse_trade_summary_min_expected_rows: int = int(os.getenv("CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS", "100"))
+    cse_daily_market_summary_source_url: str = os.getenv(
+        "CSE_DAILY_MARKET_SUMMARY_SOURCE_URL",
+        "https://www.cse.lk/equity/daily-market-summary",
+    )
+    cse_daily_market_summary_timeout_seconds: int = int(os.getenv("CSE_DAILY_MARKET_SUMMARY_TIMEOUT_SECONDS", "90"))
+
     cse_gics_summary_source_url: str = os.getenv(
         "CSE_GICS_SUMMARY_SOURCE_URL",
         "https://www.cse.lk/equity/gics-industry-group-summary",

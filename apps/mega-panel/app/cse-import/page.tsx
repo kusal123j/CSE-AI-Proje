@@ -17,7 +17,7 @@ export default function CseImportPage() {
   const config = useAsyncData(getCseImportConfig, []);
   const runs = useFetchRuns(10);
   const latestRun = useMemo(() => runs.data?.[0] ?? null, [runs.data]);
-  const latestAzRun = useMemo(() => runs.data?.find((run) => run.source !== 'CSE_TRADE_SUMMARY') ?? null, [runs.data]);
+  const latestAzRun = useMemo(() => runs.data?.find((run) => run.source === 'CSE_ALPHABETICAL') ?? null, [runs.data]);
   const rawSummary = useAsyncData(() => latestAzRun ? getRawRunSummary(latestAzRun.id) : Promise.resolve(null), [latestAzRun?.id]);
 
   function refreshAll() {
@@ -30,7 +30,7 @@ export default function CseImportPage() {
     <div>
       <PageHeader
         title="CSE Import Control"
-        description="Manual control and visibility for CSE imports: A–Z company/security master data plus Trade Summary daily market statistics. No Playwright/Chromium browser automation is used."
+        description="Manual control and visibility for CSE imports: A–Z company/security master data, Trade Summary company-level daily statistics, Daily Market Summary market-level overview, and GICS intelligence. No Playwright/Chromium browser automation is used."
         actions={<Button variant="secondary" onClick={refreshAll}>Refresh</Button>}
       />
 

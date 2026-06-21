@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import axios from 'axios';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
-import { assertAlphabeticalSourceUrl, assertGicsClassificationSourceUrl, assertGicsIndicesSourceUrl, assertGicsSummarySourceUrl } from './cse.sourceGuard';
-import { CseGicsValidationReport, CseLetterArtifact, CseLetterFailure, FetchAlphabeticalResult, FetchGicsResult, FetchTradeSummaryResult, ParsedCseAlphabeticalRow, ParsedCseGicsClassificationRow, ParsedCseGicsIndexRow, ParsedCseGicsIndustryGroupRow, ParsedCseGicsSummaryRow, ParsedCseTradeSummaryRow } from './cse.types';
+import { assertAlphabeticalSourceUrl, assertDailyMarketSummarySourceUrl, assertGicsClassificationSourceUrl, assertGicsIndicesSourceUrl, assertGicsSummarySourceUrl } from './cse.sourceGuard';
+import { CseGicsValidationReport, CseLetterArtifact, CseLetterFailure, FetchAlphabeticalResult, FetchDailyMarketSummaryResult, FetchGicsResult, FetchTradeSummaryResult, ParsedCseAlphabeticalRow, ParsedCseGicsClassificationRow, ParsedCseGicsIndexRow, ParsedCseGicsIndustryGroupRow, ParsedCseGicsSummaryRow, ParsedCseTradeSummaryRow } from './cse.types';
 
 interface FetchAlphabeticalRowsOptions {
   runId: string;
@@ -567,3 +567,117 @@ export async function fetchGicsRows(options: FetchAlphabeticalRowsOptions): Prom
     validationReport
   };
 }
+
+interface PythonDailyMarketSummaryResponse {
+  status: string;
+  source?: string;
+  sourceUrl: string;
+  fetchMode: string;
+  fetchStrategy?: string;
+  activeFetchStrategy?: string | null;
+  fetchedAt?: string;
+  tradingDate?: string | null;
+  sourceAsOfText?: string | null;
+  rowCount?: number;
+  checksum?: string | null;
+  warnings?: string[];
+  validationReport?: FetchDailyMarketSummaryResult['validationReport'];
+  rawPayload?: Record<string, unknown>;
+  summary?: Record<string, number | string | null | undefined>;
+}
+
+function validatePythonDailyMarketSummaryResponse(value: unknown): PythonDailyMarketSummaryResponse {
+  const response = value as Partial<PythonDailyMarketSummaryResponse>;
+  if (!response || typeof response !== 'object') {
+    throw new AppError(502, 'Python CSE Daily Market Summary importer returned an invalid response body.');
+  }
+  if (response.fetchMode !== 'python-http') {
+    throw new AppError(502, `Python CSE Daily Market Summary importer returned unsupported mode: ${String(response.fetchMode)}`);
+  }
+  if (!response.summary || typeof response.summary !== 'object') {
+    throw new AppError(502, 'Python CSE Daily Market Summary importer response did not include a summary object.');
+  }
+  if (!response.tradingDate && typeof response.summary.tradingDate !== 'string') {
+    throw new AppError(502, 'Python CSE Daily Market Summary importer response did not include a trading date.');
+  }
+  const validation = response.validationReport;
+  if (!validation || validation.valid !== true) {
+    const errors = validation?.errors?.join(' | ') || 'unknown validation error';
+    throw new AppError(502, `Python CSE Daily Market Summary validation failed: ${errors}`);
+  }
+  return response as PythonDailyMarketSummaryResponse;
+}
+
+export async function fetchDailyMarketSummary(options: FetchAlphabeticalRowsOptions): Promise<FetchDailyMarketSummaryResult> {
+  assertDailyMarketSummarySourceUrl(env.CSE_DAILY_MARKET_SUMMARY_SOURCE_URL);
+
+  let response: PythonDailyMarketSummaryResponse;
+  try {
+    const { data } = await axios.post(
+      `${env.PYTHON_WORKER_URL}/cse/import/daily-market-summary`,
+      {
+        runId: options.runId,
+        tradingDate: options.tradingDate,
+        sourceUrl: env.CSE_DAILY_MARKET_SUMMARY_SOURCE_URL
+      },
+      { timeout: env.CSE_DAILY_MARKET_SUMMARY_TIMEOUT_SECONDS * 1000 }
+    );
+    response = validatePythonDailyMarketSummaryResponse(data);
+  } catch (error) {
+    throw new AppError(502, `CSE Daily Market Summary Python HTTP importer failed: ${pythonImporterErrorMessage(error)}`);
+  }
+
+  const tradingDate = String(response.tradingDate || response.summary?.tradingDate || options.tradingDate);
+  const warnings = [...(response.warnings ?? [])];
+  const rawStoragePath = path.resolve(process.cwd(), env.CSE_DAILY_MARKET_SUMMARY_ARTIFACT_STORAGE_DIR, tradingDate, options.runId);
+  const rawDir = path.join(rawStoragePath, 'raw');
+  const normalizedDir = path.join(rawStoragePath, 'normalized');
+  const reportsDir = path.join(rawStoragePath, 'reports');
+  await fs.mkdir(rawDir, { recursive: true });
+  await fs.mkdir(normalizedDir, { recursive: true });
+  await fs.mkdir(reportsDir, { recursive: true });
+
+  const rawArtifactPath = path.join(rawDir, 'daily-market-summary-raw-response.json');
+  const normalizedArtifactPath = path.join(normalizedDir, 'daily-market-summary-normalized.json');
+  const validationArtifactPath = path.join(reportsDir, 'daily-market-summary-validation-report.json');
+
+  const rawPayload = response.rawPayload ?? {};
+  const validationReport = response.validationReport as FetchDailyMarketSummaryResult['validationReport'];
+  await writeJsonArtifact(rawArtifactPath, {
+    source: 'CSE_DAILY_MARKET_SUMMARY',
+    sourceUrl: response.sourceUrl,
+    fetchMode: 'python-http',
+    fetchStrategy: response.fetchStrategy ?? 'api-first-html-fallback',
+    activeFetchStrategy: response.activeFetchStrategy ?? null,
+    fetchedAt: response.fetchedAt,
+    checksum: response.checksum ?? null,
+    rawPayload
+  });
+  await writeJsonArtifact(normalizedArtifactPath, {
+    tradingDate,
+    sourceAsOfText: response.sourceAsOfText ?? response.summary?.sourceAsOfText ?? null,
+    summary: response.summary,
+    warnings,
+    validationReport
+  });
+  await writeJsonArtifact(validationArtifactPath, validationReport);
+
+  return {
+    sourceUrl: response.sourceUrl,
+    fetchMode: 'python-http',
+    fetchStrategy: response.fetchStrategy ?? 'api-first-html-fallback',
+    activeFetchStrategy: response.activeFetchStrategy ?? null,
+    tradingDate,
+    sourceAsOfText: response.sourceAsOfText ?? (response.summary?.sourceAsOfText as string | null | undefined) ?? null,
+    checksum: response.checksum ?? null,
+    warnings,
+    validationReport,
+    rawPayload,
+    summary: response.summary ?? {},
+    rawStoragePath,
+    rawArtifactPath,
+    normalizedArtifactPath,
+    validationArtifactPath
+  };
+}
+

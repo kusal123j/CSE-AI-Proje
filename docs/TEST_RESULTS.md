@@ -1,33 +1,52 @@
-# Test Results — Final Fully Corrected Package
+# Test Results — Final Full Project Package
 
-## Commands verified
+## Python worker parser tests
 
 ```bash
-npm ci --ignore-scripts
-DATABASE_URL=postgresql://test:test@localhost:5432/test npm --prefix apps/backend run typecheck
-DATABASE_URL=postgresql://test:test@localhost:5432/test npm --prefix apps/backend test
-DATABASE_URL=postgresql://test:test@localhost:5432/test npm --prefix apps/backend run build
-PYTHONPATH=apps/python-worker pytest -q apps/python-worker/tests
-npm --prefix apps/mega-panel run typecheck
+python3 -m pytest apps/python-worker/tests/test_cse_daily_market_summary_importer.py -q
 ```
 
-## Results
+Result:
 
 ```text
-Backend npm install: passed
-Backend typecheck: passed
-Backend tests: 29/29 passed
-Backend build: passed
-Python worker tests: 11/11 passed
-Mega Panel typecheck: passed
+4 passed in 0.48s
 ```
 
-## Important final tests added
+## Python compile check
 
-- Backend validation accepts valid empty A-Z letters as completed letters.
-- Python worker accepts valid empty per-letter payloads.
-- Python worker run-level `lettersSuccessful` counts both `success` and valid `empty` letters.
+```bash
+python3 -m py_compile apps/python-worker/app/cse_daily_market_summary_importer.py apps/python-worker/app/main.py
+```
 
-## Notes
+Result: passed.
 
-`npm ci` reports dependency audit warnings from the existing dependency tree. These are not caused by the CSE importer correction and were not changed by this package.
+## Backend TypeScript build
+
+```bash
+npm --prefix apps/backend run build
+```
+
+Sandbox result: not completed because dependencies are not installed.
+
+```text
+error TS2688: Cannot find type definition file for 'node'.
+```
+
+## Mega Panel build
+
+```bash
+npm --prefix apps/mega-panel run build
+```
+
+Sandbox result: not completed because dependencies are not installed.
+
+```text
+sh: 1: next: not found
+```
+
+## Summary
+
+- Daily Market Summary Python tests: passed
+- Daily Market Summary Python compile: passed
+- Backend build: needs local/Docker dependency install
+- Mega Panel build: needs local/Docker dependency install

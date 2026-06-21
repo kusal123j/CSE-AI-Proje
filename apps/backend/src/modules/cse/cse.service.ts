@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
-import { fetchAlphabeticalRows, fetchGicsRows, fetchTradeSummaryRows } from './cse.fetcher';
+import { fetchAlphabeticalRows, fetchDailyMarketSummary, fetchGicsRows, fetchTradeSummaryRows } from './cse.fetcher';
 import {
   countRunningFetchRuns,
   createFetchRun,
@@ -15,14 +15,16 @@ import {
   promoteStagedAlphabeticalRows,
   promoteTradeSummaryRows,
   saveAlphabeticalRowsToStage,
-  saveImportArtifact
+  saveImportArtifact,
+  upsertDailyMarketSummary
 } from './cse.repository';
-import { CseImportResult, CseImportStartResult } from './cse.types';
+import { CseImportResult, CseImportStartResult, FetchDailyMarketSummaryResult } from './cse.types';
 import { validateFetchedAlphabeticalResult } from './cse.validator';
 
 let inProcessImport = false;
 let inProcessTradeSummaryImport = false;
 let inProcessGicsImport = false;
+let inProcessDailyMarketSummaryImport = false;
 
 function sriLankaDateString(date = new Date()): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -455,6 +457,154 @@ async function executeGicsImport(runId: string, input: { tradingDate: string; tr
   }
 }
 
+
+const DAILY_MARKET_SUMMARY_REQUIRED_FIELDS = [
+  'tradingDate',
+  'aspiToday',
+  'aspiPrevious',
+  'spSl20Today',
+  'spSl20Previous',
+  'equityTurnoverToday',
+  'equityTurnoverPrevious',
+  'marketCapToday',
+  'marketCapPrevious',
+  'listedCompaniesToday',
+  'tradedCompaniesToday'
+] as const;
+
+function validateDailyMarketSummaryBeforeSave(fetched: FetchDailyMarketSummaryResult) {
+  const errors = [...(fetched.validationReport?.errors ?? [])];
+  for (const field of DAILY_MARKET_SUMMARY_REQUIRED_FIELDS) {
+    if (field === 'tradingDate') {
+      if (!fetched.tradingDate && !fetched.summary?.tradingDate) errors.push('Required Daily Market Summary field missing before DB save: tradingDate');
+      continue;
+    }
+    if (fetched.summary?.[field] === null || fetched.summary?.[field] === undefined || fetched.summary?.[field] === '') {
+      errors.push(`Required Daily Market Summary field missing before DB save: ${field}`);
+    }
+  }
+  return {
+    valid: errors.length === 0 && fetched.validationReport?.valid === true,
+    errors,
+    warnings: fetched.validationReport?.warnings ?? fetched.warnings ?? [],
+    requiredFields: Array.from(DAILY_MARKET_SUMMARY_REQUIRED_FIELDS),
+    parsedFieldCount: fetched.validationReport?.parsedFieldCount ?? Object.values(fetched.summary ?? {}).filter((value) => value !== null && value !== undefined && value !== '').length,
+    promotionAllowed: errors.length === 0 && fetched.validationReport?.promotionAllowed === true
+  };
+}
+
+async function executeDailyMarketSummaryImport(runId: string, input: { tradingDate: string; triggerType: 'manual' | 'scheduled' }): Promise<CseImportResult> {
+  let runAlreadyFinished = false;
+  try {
+    const fetched = await fetchDailyMarketSummary({ runId, tradingDate: input.tradingDate });
+    const saveValidationReport = validateDailyMarketSummaryBeforeSave(fetched);
+    if (!saveValidationReport.valid) {
+      await finishFetchRun(runId, {
+        status: 'FAILED',
+        recordsFound: 0,
+        companiesCreated: 0,
+        companiesUpdated: 0,
+        securitiesCreated: 0,
+        securitiesUpdated: 0,
+        snapshotsCreated: 0,
+        snapshotsUpdated: 0,
+        recordsFailed: 1,
+        errorMessage: `Daily Market Summary backend validation failed: ${saveValidationReport.errors.join(' | ')}`,
+        warnings: saveValidationReport.warnings,
+        rawFilePath: fetched.rawStoragePath,
+        recordsBeforeDeduplication: 1,
+        recordsDeduplicated: 0,
+        validationReport: saveValidationReport as never
+      });
+      runAlreadyFinished = true;
+      throw new AppError(422, `Daily Market Summary backend validation failed: ${saveValidationReport.errors.join(' | ')}`);
+    }
+    const fetchedForSave = { ...fetched, validationReport: saveValidationReport };
+    const saved = await upsertDailyMarketSummary(runId, fetchedForSave);
+
+    await saveImportArtifact({
+      runId,
+      artifactType: 'daily_market_summary_raw_response',
+      filePath: fetched.rawArtifactPath,
+      checksum: fetched.checksum ?? null,
+      rowCount: 1
+    });
+    await saveImportArtifact({
+      runId,
+      artifactType: 'daily_market_summary_normalized_json',
+      filePath: fetched.normalizedArtifactPath,
+      rowCount: 1
+    });
+    await saveImportArtifact({
+      runId,
+      artifactType: 'validation_report',
+      filePath: fetched.validationArtifactPath,
+      rowCount: 1
+    });
+
+    const status: 'SUCCESS' | 'PARTIAL_SUCCESS' = fetched.warnings.length > 0 ? 'PARTIAL_SUCCESS' : 'SUCCESS';
+    const result: CseImportResult = {
+      runId,
+      status,
+      recordsFound: 1,
+      recordsBeforeDeduplication: 1,
+      recordsDeduplicated: 0,
+      companiesCreated: 0,
+      companiesUpdated: 0,
+      securitiesCreated: 0,
+      securitiesUpdated: 0,
+      snapshotsCreated: saved?.inserted ? 1 : 0,
+      snapshotsUpdated: saved?.inserted ? 0 : 1,
+      recordsFailed: 0,
+      warnings: fetched.warnings,
+      rawFilePath: fetched.rawStoragePath,
+      rawStoragePath: fetched.rawStoragePath,
+      tradingDate: fetched.tradingDate,
+      fetchMode: fetched.fetchMode,
+      validationReport: saveValidationReport as never
+    };
+
+    await finishFetchRun(runId, {
+      status,
+      recordsFound: 1,
+      companiesCreated: 0,
+      companiesUpdated: 0,
+      securitiesCreated: 0,
+      securitiesUpdated: 0,
+      snapshotsCreated: result.snapshotsCreated,
+      snapshotsUpdated: result.snapshotsUpdated,
+      recordsFailed: 0,
+      warnings: fetched.warnings,
+      rawFilePath: fetched.rawStoragePath,
+      recordsBeforeDeduplication: 1,
+      recordsDeduplicated: 0,
+      validationReport: saveValidationReport as never
+    });
+    runAlreadyFinished = true;
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown CSE Daily Market Summary import error';
+    if (!runAlreadyFinished) {
+      await finishFetchRun(runId, {
+        status: 'FAILED',
+        recordsFound: 0,
+        companiesCreated: 0,
+        companiesUpdated: 0,
+        securitiesCreated: 0,
+        securitiesUpdated: 0,
+        snapshotsCreated: 0,
+        snapshotsUpdated: 0,
+        recordsFailed: 0,
+        errorMessage: message,
+        warnings: []
+      }).catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    inProcessDailyMarketSummaryImport = false;
+  }
+}
+
 export const cseService = {
   async startAlphabeticalImportJob(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportStartResult> {
     if (inProcessImport || (await countRunningFetchRuns()) > 0) {
@@ -583,6 +733,51 @@ export const cseService = {
     return executeGicsImport(run.id, { tradingDate, triggerType });
   },
 
+
+  async startDailyMarketSummaryImportJob(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportStartResult> {
+    if (!env.CSE_DAILY_MARKET_SUMMARY_ENABLED) {
+      throw new AppError(403, 'CSE Daily Market Summary importer is disabled by CSE_DAILY_MARKET_SUMMARY_ENABLED=false.');
+    }
+    if (inProcessDailyMarketSummaryImport || inProcessGicsImport || inProcessTradeSummaryImport || inProcessImport || (await countRunningFetchRuns()) > 0) {
+      throw new AppError(409, 'A CSE import is already running. Wait until the current import finishes before starting another one.');
+    }
+
+    inProcessDailyMarketSummaryImport = true;
+    const triggerType = input?.triggerType ?? 'manual';
+    const tradingDate = input?.tradingDate ?? sriLankaDateString();
+    const run = await createFetchRun({ source: 'CSE_DAILY_MARKET_SUMMARY', sourceUrl: env.CSE_DAILY_MARKET_SUMMARY_SOURCE_URL, fetchMode: 'python-http', triggerType });
+
+    setImmediate(() => {
+      executeDailyMarketSummaryImport(run.id, { tradingDate, triggerType }).catch((error) => {
+        console.error('CSE Daily Market Summary background import failed', error);
+      });
+    });
+
+    return {
+      ok: true,
+      runId: run.id,
+      status: 'RUNNING',
+      triggerType,
+      tradingDate,
+      message: 'CSE Daily Market Summary import started. Poll /api/cse/import/runs/:id for status.'
+    };
+  },
+
+  async runDailyMarketSummaryImport(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportResult> {
+    if (!env.CSE_DAILY_MARKET_SUMMARY_ENABLED) {
+      throw new AppError(403, 'CSE Daily Market Summary importer is disabled by CSE_DAILY_MARKET_SUMMARY_ENABLED=false.');
+    }
+    if (inProcessDailyMarketSummaryImport || inProcessGicsImport || inProcessTradeSummaryImport || inProcessImport || (await countRunningFetchRuns()) > 0) {
+      throw new AppError(409, 'A CSE import is already running. Wait until the current import finishes before starting another one.');
+    }
+
+    inProcessDailyMarketSummaryImport = true;
+    const triggerType = input?.triggerType ?? 'manual';
+    const tradingDate = input?.tradingDate ?? sriLankaDateString();
+    const run = await createFetchRun({ source: 'CSE_DAILY_MARKET_SUMMARY', sourceUrl: env.CSE_DAILY_MARKET_SUMMARY_SOURCE_URL, fetchMode: 'python-http', triggerType });
+    return executeDailyMarketSummaryImport(run.id, { tradingDate, triggerType });
+  },
+
   async importConfig() {
     const internalSecretConfigured = Boolean(env.CSE_IMPORT_INTERNAL_SECRET.trim());
     const lastImport = await latestFetchRun();
@@ -609,6 +804,22 @@ export const cseService = {
         timeoutSeconds: env.CSE_TRADE_SUMMARY_TIMEOUT_SECONDS,
         minExpectedRows: env.CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS,
         artifactStorageDir: env.CSE_TRADE_SUMMARY_ARTIFACT_STORAGE_DIR
+      },
+      dailyMarketSummary: {
+        enabled: env.CSE_DAILY_MARKET_SUMMARY_ENABLED,
+        source: 'CSE_DAILY_MARKET_SUMMARY',
+        sourceUrl: env.CSE_DAILY_MARKET_SUMMARY_SOURCE_URL,
+        fetchMode: 'python-http',
+        fetchStrategy: 'api-first-html-fallback',
+        htmlFallbackEnabled: true,
+        browserAutomationEnabled: false,
+        playwrightEnabled: false,
+        schedulerEnabled: env.CSE_DAILY_MARKET_SUMMARY_SCHEDULER_ENABLED,
+        weekdaysOnly: env.CSE_DAILY_MARKET_SUMMARY_WEEKDAYS_ONLY,
+        scheduledHour: env.CSE_DAILY_MARKET_SUMMARY_HOUR,
+        scheduledMinute: env.CSE_DAILY_MARKET_SUMMARY_MINUTE,
+        timeoutSeconds: env.CSE_DAILY_MARKET_SUMMARY_TIMEOUT_SECONDS,
+        artifactStorageDir: env.CSE_DAILY_MARKET_SUMMARY_ARTIFACT_STORAGE_DIR
       },
       gics: {
         enabled: env.CSE_GICS_ENABLED,

@@ -68,3 +68,6 @@ export function assertGicsIndicesSourceUrl(sourceUrl: string): void {
 export function assertGicsClassificationSourceUrl(sourceUrl: string): void {
   assertCsePath(sourceUrl, '/listed-entities/gics-classification', 'GICS Classification importer');
 }
+export function assertDailyMarketSummarySourceUrl(sourceUrl: string): void {
+  assertCsePath(sourceUrl, '/equity/daily-market-summary', 'Daily Market Summary importer');
+}

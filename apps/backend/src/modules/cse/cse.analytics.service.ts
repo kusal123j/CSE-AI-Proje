@@ -58,6 +58,59 @@ function baseSnapshotSelect() {
     JOIN cse_companies c ON c.id = sec.company_id
   `;
 }
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function percentChange(today: unknown, previous: unknown): number | null {
+  const todayNumber = toNullableNumber(today);
+  const previousNumber = toNullableNumber(previous);
+  if (todayNumber === null || previousNumber === null || previousNumber === 0) return null;
+  return ((todayNumber - previousNumber) / previousNumber) * 100;
+}
+
+function difference(today: unknown, previous: unknown): number | null {
+  const todayNumber = toNullableNumber(today);
+  const previousNumber = toNullableNumber(previous);
+  if (todayNumber === null || previousNumber === null) return null;
+  return todayNumber - previousNumber;
+}
+
+function buildDailyMarketSummaryResponse(row: Record<string, unknown> | null) {
+  if (!row) return null;
+  const calculated = {
+    aspiChange: difference(row.aspi_today, row.aspi_previous),
+    aspiChangePercent: percentChange(row.aspi_today, row.aspi_previous),
+    spSl20Change: difference(row.sp_sl20_today, row.sp_sl20_previous),
+    spSl20ChangePercent: percentChange(row.sp_sl20_today, row.sp_sl20_previous),
+    foreignNetFlow: difference(row.foreign_purchases_today, row.foreign_sales_today),
+    domesticNetFlow: difference(row.domestic_purchases_today, row.domestic_sales_today),
+    turnoverChange: difference(row.equity_turnover_today, row.equity_turnover_previous),
+    turnoverChangePercent: percentChange(row.equity_turnover_today, row.equity_turnover_previous),
+    marketCapChange: difference(row.market_cap_today, row.market_cap_previous),
+    marketCapChangePercent: percentChange(row.market_cap_today, row.market_cap_previous),
+    tradedCompanyParticipationPercent:
+      toNullableNumber(row.traded_companies_today) !== null && toNullableNumber(row.listed_companies_today)
+        ? (Number(row.traded_companies_today) / Number(row.listed_companies_today)) * 100
+        : null
+  };
+  return {
+    ...row,
+    tradingDate: row.trading_date,
+    sourceUrl: row.source_url,
+    sourceAsOfText: row.source_as_of_text,
+    fetchMode: row.fetch_mode,
+    fetchStrategy: row.fetch_strategy,
+    rawPayload: row.raw_payload,
+    validationReport: row.validation_report,
+    warnings: row.warnings_json,
+    importRunId: row.import_run_id,
+    calculated
+  };
+}
+
 
 export const cseAnalyticsService = {
   async latestTradingDate() {
@@ -269,4 +322,41 @@ export const cseAnalyticsService = {
       totalTradeVolume: Number(row.total_trade_volume ?? 0)
     });
   }
+,
+
+  async latestDailyMarketSummary() {
+    const result = await query(`SELECT * FROM cse_daily_market_summaries ORDER BY trading_date DESC LIMIT 1`);
+    return buildDailyMarketSummaryResponse(result.rows[0] ?? null);
+  },
+
+  async getDailyMarketSummaryByDate(date?: string) {
+    if (date?.trim()) {
+      const result = await query(`SELECT * FROM cse_daily_market_summaries WHERE trading_date = $1::date LIMIT 1`, [date.trim()]);
+      return buildDailyMarketSummaryResponse(result.rows[0] ?? null);
+    }
+    return this.latestDailyMarketSummary();
+  },
+
+  async dailyMarketSummaryHistory(input: { from?: string; to?: string; limit?: number } = {}) {
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (input.from?.trim()) {
+      params.push(input.from.trim());
+      where.push(`trading_date >= $${params.length}::date`);
+    }
+    if (input.to?.trim()) {
+      params.push(input.to.trim());
+      where.push(`trading_date <= $${params.length}::date`);
+    }
+    params.push(Math.min(Math.max(input.limit ?? 60, 1), 500));
+    const result = await query(
+      `SELECT * FROM cse_daily_market_summaries
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY trading_date DESC
+       LIMIT $${params.length}`,
+      params
+    );
+    return result.rows.map((row) => buildDailyMarketSummaryResponse(row));
+  }
+
 };

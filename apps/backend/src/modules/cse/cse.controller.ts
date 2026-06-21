@@ -24,6 +24,12 @@ export const cseController = {
     return ok(res, await cseService.startTradeSummaryImportJob({ tradingDate, triggerType: 'manual' }), 202);
   },
 
+
+  async runDailyMarketSummaryImport(req: Request, res: Response) {
+    const tradingDate = typeof req.body?.tradingDate === 'string' ? req.body.tradingDate : undefined;
+    return ok(res, await cseService.startDailyMarketSummaryImportJob({ tradingDate, triggerType: 'manual' }), 202);
+  },
+
   async runGicsImport(req: Request, res: Response) {
     const tradingDate = typeof req.body?.tradingDate === 'string' ? req.body.tradingDate : undefined;
     return ok(res, await cseService.startGicsImportJob({ tradingDate, triggerType: 'manual' }), 202);
@@ -53,6 +59,27 @@ export const cseController = {
 
   async latestDate(_req: Request, res: Response) {
     return ok(res, { tradingDate: await cseAnalyticsService.latestTradingDate() });
+  },
+
+
+  async latestDailyMarketSummary(_req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.latestDailyMarketSummary());
+  },
+
+  async getDailyMarketSummary(req: Request, res: Response) {
+    const date = typeof req.query.date === 'string' ? req.query.date : undefined;
+    return ok(res, await cseAnalyticsService.getDailyMarketSummaryByDate(date));
+  },
+
+  async dailyMarketSummaryHistory(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseAnalyticsService.dailyMarketSummaryHistory({
+        from: typeof req.query.from === 'string' ? req.query.from : undefined,
+        to: typeof req.query.to === 'string' ? req.query.to : undefined,
+        limit: req.query.limit ? Number(req.query.limit) : undefined
+      })
+    );
   },
 
   async listCompanies(req: Request, res: Response) {

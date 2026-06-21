@@ -1,6 +1,6 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../../config/database';
-import { CseGicsPromotionResult, CseImportValidationReport, ParsedCseAlphabeticalRow, ParsedCseGicsClassificationRow, ParsedCseGicsIndexRow, ParsedCseGicsIndustryGroupRow, ParsedCseGicsSummaryRow, ParsedCseTradeSummaryRow } from './cse.types';
+import { CseGicsPromotionResult, CseImportValidationReport, FetchDailyMarketSummaryResult, ParsedCseAlphabeticalRow, ParsedCseGicsClassificationRow, ParsedCseGicsIndexRow, ParsedCseGicsIndustryGroupRow, ParsedCseGicsSummaryRow, ParsedCseTradeSummaryRow } from './cse.types';
 
 export interface FetchRunInput {
   sourceUrl: string;
@@ -890,3 +890,158 @@ export async function gicsDashboard() {
     latestIndexDate: latestIndex.rows[0]?.trading_date ?? null
   };
 }
+
+const DAILY_MARKET_SUMMARY_DB_FIELDS: Array<[string, string]> = [
+  ['aspi_today', 'aspiToday'],
+  ['aspi_previous', 'aspiPrevious'],
+  ['sp_sl20_today', 'spSl20Today'],
+  ['sp_sl20_previous', 'spSl20Previous'],
+  ['astri_today', 'astriToday'],
+  ['astri_previous', 'astriPrevious'],
+  ['tri_sp_sl20_today', 'triSpSl20Today'],
+  ['tri_sp_sl20_previous', 'triSpSl20Previous'],
+  ['equity_turnover_today', 'equityTurnoverToday'],
+  ['equity_turnover_previous', 'equityTurnoverPrevious'],
+  ['domestic_purchases_today', 'domesticPurchasesToday'],
+  ['domestic_purchases_previous', 'domesticPurchasesPrevious'],
+  ['domestic_sales_today', 'domesticSalesToday'],
+  ['domestic_sales_previous', 'domesticSalesPrevious'],
+  ['foreign_purchases_today', 'foreignPurchasesToday'],
+  ['foreign_purchases_previous', 'foreignPurchasesPrevious'],
+  ['foreign_sales_today', 'foreignSalesToday'],
+  ['foreign_sales_previous', 'foreignSalesPrevious'],
+  ['turnover_volume_today', 'turnoverVolumeToday'],
+  ['turnover_volume_previous', 'turnoverVolumePrevious'],
+  ['turnover_volume_domestic_today', 'turnoverVolumeDomesticToday'],
+  ['turnover_volume_domestic_previous', 'turnoverVolumeDomesticPrevious'],
+  ['turnover_volume_foreign_today', 'turnoverVolumeForeignToday'],
+  ['turnover_volume_foreign_previous', 'turnoverVolumeForeignPrevious'],
+  ['trades_today', 'tradesToday'],
+  ['trades_previous', 'tradesPrevious'],
+  ['trades_domestic_today', 'tradesDomesticToday'],
+  ['trades_domestic_previous', 'tradesDomesticPrevious'],
+  ['trades_foreign_today', 'tradesForeignToday'],
+  ['trades_foreign_previous', 'tradesForeignPrevious'],
+  ['corporate_debt_today', 'corporateDebtToday'],
+  ['corporate_debt_previous', 'corporateDebtPrevious'],
+  ['government_debt_today', 'governmentDebtToday'],
+  ['government_debt_previous', 'governmentDebtPrevious'],
+  ['listed_companies_today', 'listedCompaniesToday'],
+  ['listed_companies_previous', 'listedCompaniesPrevious'],
+  ['traded_companies_today', 'tradedCompaniesToday'],
+  ['traded_companies_previous', 'tradedCompaniesPrevious'],
+  ['market_per_today', 'marketPerToday'],
+  ['market_per_previous', 'marketPerPrevious'],
+  ['market_pbv_today', 'marketPbvToday'],
+  ['market_pbv_previous', 'marketPbvPrevious'],
+  ['market_dy_today', 'marketDyToday'],
+  ['market_dy_previous', 'marketDyPrevious'],
+  ['market_cap_today', 'marketCapToday'],
+  ['market_cap_previous', 'marketCapPrevious'],
+  ['cds_total_quantity', 'cdsTotalQuantity'],
+  ['cds_total_market_value', 'cdsTotalMarketValue'],
+  ['cds_domestic_quantity', 'cdsDomesticQuantity'],
+  ['cds_domestic_market_value', 'cdsDomesticMarketValue'],
+  ['cds_foreign_quantity', 'cdsForeignQuantity'],
+  ['cds_foreign_market_value', 'cdsForeignMarketValue']
+];
+
+function normalizeDailyMarketSummaryRow(row: Record<string, unknown> | null) {
+  if (!row) return null;
+  const summary: Record<string, unknown> = {};
+  for (const [dbField, camelField] of DAILY_MARKET_SUMMARY_DB_FIELDS) {
+    summary[camelField] = row[dbField] ?? null;
+  }
+  return {
+    ...row,
+    tradingDate: row.trading_date,
+    sourceUrl: row.source_url,
+    sourceAsOfText: row.source_as_of_text,
+    fetchMode: row.fetch_mode,
+    fetchStrategy: row.fetch_strategy,
+    rawPayload: row.raw_payload,
+    warnings: row.warnings_json,
+    validationReport: row.validation_report,
+    importRunId: row.import_run_id,
+    summary
+  };
+}
+
+export async function upsertDailyMarketSummary(runId: string, fetched: FetchDailyMarketSummaryResult) {
+  const fixedColumns = [
+    'trading_date',
+    'source_url',
+    'source_as_of_text',
+    'fetch_mode',
+    'fetch_strategy',
+    'checksum',
+    'raw_payload',
+    'validation_report',
+    'warnings_json',
+    'import_run_id'
+  ];
+  const columns = [...fixedColumns, ...DAILY_MARKET_SUMMARY_DB_FIELDS.map(([dbField]) => dbField)];
+  const values = [
+    fetched.tradingDate,
+    fetched.sourceUrl,
+    fetched.sourceAsOfText ?? null,
+    fetched.fetchMode,
+    fetched.fetchStrategy,
+    fetched.checksum ?? null,
+    JSON.stringify(fetched.rawPayload ?? {}),
+    JSON.stringify(fetched.validationReport ?? {}),
+    JSON.stringify(fetched.warnings ?? []),
+    runId,
+    ...DAILY_MARKET_SUMMARY_DB_FIELDS.map(([, camelField]) => fetched.summary[camelField] ?? null)
+  ];
+  const placeholders = values.map((_, index) => `$${index + 1}${['trading_date'].includes(columns[index]) ? '::date' : ['raw_payload', 'validation_report', 'warnings_json'].includes(columns[index]) ? '::jsonb' : ''}`);
+  const updateAssignments = columns
+    .filter((column) => column !== 'trading_date')
+    .map((column) => `${column} = EXCLUDED.${column}`)
+    .join(',\n       ');
+
+  const result = await query(
+    `INSERT INTO cse_daily_market_summaries (${columns.join(', ')})
+     VALUES (${placeholders.join(', ')})
+     ON CONFLICT (trading_date)
+     DO UPDATE SET
+       ${updateAssignments},
+       updated_at = NOW()
+     RETURNING *, (xmax = 0) AS inserted`,
+    values
+  );
+  return result.rows[0];
+}
+
+export async function findLatestDailyMarketSummary() {
+  const result = await query(`SELECT * FROM cse_daily_market_summaries ORDER BY trading_date DESC LIMIT 1`);
+  return normalizeDailyMarketSummaryRow(result.rows[0] ?? null);
+}
+
+export async function findDailyMarketSummaryByDate(date: string) {
+  const result = await query(`SELECT * FROM cse_daily_market_summaries WHERE trading_date = $1::date LIMIT 1`, [date]);
+  return normalizeDailyMarketSummaryRow(result.rows[0] ?? null);
+}
+
+export async function listDailyMarketSummaryHistory(input: { from?: string; to?: string; limit?: number } = {}) {
+  const params: unknown[] = [];
+  const where: string[] = [];
+  if (input.from) {
+    params.push(input.from);
+    where.push(`trading_date >= $${params.length}::date`);
+  }
+  if (input.to) {
+    params.push(input.to);
+    where.push(`trading_date <= $${params.length}::date`);
+  }
+  params.push(Math.min(Math.max(input.limit ?? 60, 1), 500));
+  const result = await query(
+    `SELECT * FROM cse_daily_market_summaries
+     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+     ORDER BY trading_date DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return result.rows.map((row) => normalizeDailyMarketSummaryRow(row));
+}
+

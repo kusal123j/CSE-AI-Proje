@@ -50,6 +50,7 @@ export interface CseImportConfig {
   staleAfterHours?: number;
   lastSuccessfulImportAt?: string | null;
   gics?: CseGicsImportConfig;
+  dailyMarketSummary?: CseDailyMarketSummaryConfig;
   tradeSummary?: {
     enabled: boolean;
     source: string;
@@ -268,4 +269,70 @@ export interface CseGicsClassificationRow {
   gics_code?: string | null;
   is_mapped?: boolean;
   last_seen_at?: string | null;
+}
+
+export interface CseDailyMarketSummaryConfig {
+  enabled: boolean;
+  source: string;
+  sourceUrl: string;
+  fetchMode: string;
+  fetchStrategy: string;
+  htmlFallbackEnabled: boolean;
+  browserAutomationEnabled: boolean;
+  playwrightEnabled: boolean;
+  schedulerEnabled: boolean;
+  weekdaysOnly?: boolean;
+  scheduledHour?: number;
+  scheduledMinute?: number;
+  timeoutSeconds?: number;
+  artifactStorageDir?: string;
+}
+
+export interface CseDailyMarketSummaryCalculatedMetrics {
+  aspiChange?: number | string | null;
+  aspiChangePercent?: number | string | null;
+  spSl20Change?: number | string | null;
+  spSl20ChangePercent?: number | string | null;
+  foreignNetFlow?: number | string | null;
+  domesticNetFlow?: number | string | null;
+  turnoverChange?: number | string | null;
+  turnoverChangePercent?: number | string | null;
+  marketCapChange?: number | string | null;
+  marketCapChangePercent?: number | string | null;
+  tradedCompanyParticipationPercent?: number | string | null;
+}
+
+export interface CseDailyMarketSummary {
+  id?: string;
+  trading_date?: string | null;
+  tradingDate?: string | null;
+  source_url?: string | null;
+  sourceUrl?: string | null;
+  source_as_of_text?: string | null;
+  sourceAsOfText?: string | null;
+  fetch_mode?: string | null;
+  fetchMode?: string | null;
+  fetch_strategy?: string | null;
+  fetchStrategy?: string | null;
+  checksum?: string | null;
+  warnings_json?: string[] | string | null;
+  warnings?: string[] | string | null;
+  validation_report?: Record<string, unknown> | null;
+  validationReport?: Record<string, unknown> | null;
+  calculated?: CseDailyMarketSummaryCalculatedMetrics;
+
+  aspi_today?: number | string | null;
+  aspi_previous?: number | string | null;
+  sp_sl20_today?: number | string | null;
+  sp_sl20_previous?: number | string | null;
+  equity_turnover_today?: number | string | null;
+  equity_turnover_previous?: number | string | null;
+  foreign_purchases_today?: number | string | null;
+  foreign_sales_today?: number | string | null;
+  domestic_purchases_today?: number | string | null;
+  domestic_sales_today?: number | string | null;
+  market_cap_today?: number | string | null;
+  market_per_today?: number | string | null;
+  market_pbv_today?: number | string | null;
+  market_dy_today?: number | string | null;
 }

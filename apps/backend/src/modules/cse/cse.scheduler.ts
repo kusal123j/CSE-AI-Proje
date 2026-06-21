@@ -34,6 +34,13 @@ function shouldRunTradeSummaryNow(date = new Date()): boolean {
   return hour === env.CSE_TRADE_SUMMARY_HOUR && minute === env.CSE_TRADE_SUMMARY_MINUTE;
 }
 
+function shouldRunDailyMarketSummaryNow(date = new Date()): boolean {
+  if (!env.CSE_DAILY_MARKET_SUMMARY_SCHEDULER_ENABLED) return false;
+  if (env.CSE_DAILY_MARKET_SUMMARY_WEEKDAYS_ONLY && !isWeekdaySriLanka(date)) return false;
+  const { hour, minute } = currentSriLankaHourMinute(date);
+  return hour === env.CSE_DAILY_MARKET_SUMMARY_HOUR && minute === env.CSE_DAILY_MARKET_SUMMARY_MINUTE;
+}
+
 export function startCseAlphabeticalScheduler(): { stop: () => void } | null {
   if (!env.CSE_IMPORT_SCHEDULER_ENABLED) {
     logger.info('CSE ALPHABETICAL scheduler disabled');
@@ -93,3 +100,34 @@ export function startCseTradeSummaryScheduler(): { stop: () => void } | null {
     stop: () => clearInterval(interval)
   };
 }
+
+export function startCseDailyMarketSummaryScheduler(): { stop: () => void } | null {
+  if (!env.CSE_DAILY_MARKET_SUMMARY_SCHEDULER_ENABLED) {
+    logger.info('CSE Daily Market Summary scheduler disabled');
+    return null;
+  }
+
+  let running = false;
+  let lastRunKey = '';
+
+  const interval = setInterval(() => {
+    const now = new Date();
+    const runKey = now.toISOString().slice(0, 16);
+    if (!shouldRunDailyMarketSummaryNow(now) || running || lastRunKey === runKey) return;
+
+    running = true;
+    lastRunKey = runKey;
+    cseService
+      .runDailyMarketSummaryImport({ triggerType: 'scheduled' })
+      .then((result) => logger.info({ result }, 'Scheduled CSE Daily Market Summary import completed'))
+      .catch((error) => logger.error({ error }, 'Scheduled CSE Daily Market Summary import failed'))
+      .finally(() => {
+        running = false;
+      });
+  }, env.CSE_IMPORT_SCHEDULER_INTERVAL_MS);
+
+  return {
+    stop: () => clearInterval(interval)
+  };
+}
+

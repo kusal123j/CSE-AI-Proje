@@ -416,6 +416,97 @@ CREATE TRIGGER cse_daily_market_snapshots_set_updated_at
 BEFORE UPDATE ON cse_daily_market_snapshots
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+
+-- -----------------------------------------------------------------------------
+-- CSE Daily Market Summary importer: market-level daily overview from
+-- /equity/daily-market-summary. Kept separate from company/security snapshots.
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS cse_daily_market_summaries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trading_date DATE NOT NULL,
+  source_url TEXT NOT NULL,
+  source_as_of_text TEXT,
+  fetch_mode TEXT NOT NULL DEFAULT 'python-http',
+  fetch_strategy TEXT NOT NULL DEFAULT 'api-first-html-fallback',
+  checksum TEXT,
+  raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  validation_report JSONB NOT NULL DEFAULT '{}'::jsonb,
+  warnings_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  import_run_id UUID REFERENCES cse_fetch_runs(id) ON DELETE SET NULL,
+
+  aspi_today NUMERIC(18, 4),
+  aspi_previous NUMERIC(18, 4),
+  sp_sl20_today NUMERIC(18, 4),
+  sp_sl20_previous NUMERIC(18, 4),
+  astri_today NUMERIC(18, 4),
+  astri_previous NUMERIC(18, 4),
+  tri_sp_sl20_today NUMERIC(18, 4),
+  tri_sp_sl20_previous NUMERIC(18, 4),
+
+  equity_turnover_today NUMERIC(24, 4),
+  equity_turnover_previous NUMERIC(24, 4),
+  domestic_purchases_today NUMERIC(24, 4),
+  domestic_purchases_previous NUMERIC(24, 4),
+  domestic_sales_today NUMERIC(24, 4),
+  domestic_sales_previous NUMERIC(24, 4),
+  foreign_purchases_today NUMERIC(24, 4),
+  foreign_purchases_previous NUMERIC(24, 4),
+  foreign_sales_today NUMERIC(24, 4),
+  foreign_sales_previous NUMERIC(24, 4),
+
+  turnover_volume_today BIGINT,
+  turnover_volume_previous BIGINT,
+  turnover_volume_domestic_today BIGINT,
+  turnover_volume_domestic_previous BIGINT,
+  turnover_volume_foreign_today BIGINT,
+  turnover_volume_foreign_previous BIGINT,
+
+  trades_today BIGINT,
+  trades_previous BIGINT,
+  trades_domestic_today BIGINT,
+  trades_domestic_previous BIGINT,
+  trades_foreign_today BIGINT,
+  trades_foreign_previous BIGINT,
+
+  corporate_debt_today NUMERIC(24, 4),
+  corporate_debt_previous NUMERIC(24, 4),
+  government_debt_today NUMERIC(24, 4),
+  government_debt_previous NUMERIC(24, 4),
+
+  listed_companies_today INTEGER,
+  listed_companies_previous INTEGER,
+  traded_companies_today INTEGER,
+  traded_companies_previous INTEGER,
+  market_per_today NUMERIC(12, 6),
+  market_per_previous NUMERIC(12, 6),
+  market_pbv_today NUMERIC(12, 6),
+  market_pbv_previous NUMERIC(12, 6),
+  market_dy_today NUMERIC(12, 6),
+  market_dy_previous NUMERIC(12, 6),
+  market_cap_today NUMERIC(24, 4),
+  market_cap_previous NUMERIC(24, 4),
+
+  cds_total_quantity BIGINT,
+  cds_total_market_value NUMERIC(24, 4),
+  cds_domestic_quantity BIGINT,
+  cds_domestic_market_value NUMERIC(24, 4),
+  cds_foreign_quantity BIGINT,
+  cds_foreign_market_value NUMERIC(24, 4),
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_daily_market_summaries_trading_date_unique UNIQUE (trading_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cse_daily_market_summaries_trading_date ON cse_daily_market_summaries(trading_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_daily_market_summaries_import_run_id ON cse_daily_market_summaries(import_run_id);
+
+DROP TRIGGER IF EXISTS cse_daily_market_summaries_set_updated_at ON cse_daily_market_summaries;
+CREATE TRIGGER cse_daily_market_summaries_set_updated_at
+BEFORE UPDATE ON cse_daily_market_summaries
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- -----------------------------------------------------------------------------
 -- CSE GICS importer: official industry groups, group summary, indices, and
 -- security-to-industry classification enrichment. Kept separate from A-Z master

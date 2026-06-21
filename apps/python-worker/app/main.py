@@ -10,6 +10,7 @@ from .config import settings
 from .cse_http_importer import CseImportError, run_http_import
 from .cse_trade_summary_importer import run_trade_summary_import
 from .cse_gics_importer import run_gics_import
+from .cse_daily_market_summary_importer import CseDailyMarketSummaryImportError, run_daily_market_summary_import
 
 app = FastAPI(title="CSE Python Worker", version="0.2.0")
 
@@ -67,6 +68,27 @@ def cse_import_trade_summary(payload: CseImportRequest):
         result["tradingDate"] = payload.trading_date
         return result
     except CseImportError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "status": "failed",
+                "errorCode": exc.__class__.__name__,
+                "message": str(exc),
+                "sourceUrl": source_url,
+                "runId": payload.run_id,
+            },
+        ) from exc
+
+
+@app.post("/cse/import/daily-market-summary")
+def cse_import_daily_market_summary(payload: CseImportRequest):
+    source_url = payload.source_url or settings.cse_daily_market_summary_source_url
+    try:
+        result = run_daily_market_summary_import(source_url)
+        result["runId"] = payload.run_id
+        result["tradingDate"] = result.get("tradingDate") or payload.trading_date
+        return result
+    except CseDailyMarketSummaryImportError as exc:
         raise HTTPException(
             status_code=502,
             detail={

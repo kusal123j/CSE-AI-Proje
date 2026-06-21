@@ -87,6 +87,15 @@ export const envSchema = z.object({
   CSE_TRADE_SUMMARY_MINUTE: z.coerce.number().min(0).max(59).default(45),
   CSE_TRADE_SUMMARY_WEEKDAYS_ONLY: booleanFromEnv.default(true),
 
+  CSE_DAILY_MARKET_SUMMARY_ENABLED: booleanFromEnv.default(true),
+  CSE_DAILY_MARKET_SUMMARY_SOURCE_URL: z.string().url().default('https://www.cse.lk/equity/daily-market-summary'),
+  CSE_DAILY_MARKET_SUMMARY_ARTIFACT_STORAGE_DIR: z.string().default('storage/raw/cse/daily-market-summary'),
+  CSE_DAILY_MARKET_SUMMARY_TIMEOUT_SECONDS: z.coerce.number().positive().default(90),
+  CSE_DAILY_MARKET_SUMMARY_SCHEDULER_ENABLED: booleanFromEnv.default(false),
+  CSE_DAILY_MARKET_SUMMARY_HOUR: z.coerce.number().min(0).max(23).default(16),
+  CSE_DAILY_MARKET_SUMMARY_MINUTE: z.coerce.number().min(0).max(59).default(15),
+  CSE_DAILY_MARKET_SUMMARY_WEEKDAYS_ONLY: booleanFromEnv.default(true),
+
   CSE_GICS_ENABLED: booleanFromEnv.default(true),
   CSE_GICS_SUMMARY_SOURCE_URL: z.string().url().default('https://www.cse.lk/equity/gics-industry-group-summary'),
   CSE_GICS_INDICES_SOURCE_URL: z.string().url().default('https://www.cse.lk/equity/gics-industry-group-indices'),

@@ -1,22 +1,71 @@
-# File Comparison Report — Corrected CSE GICS Import Package
+# File Comparison Report — Final Full Project Package
 
-Comparison basis: SHA256 file-content hashing against the uploaded original latest project. File name and file size alone were not used.
+Comparison method: SHA-256 file-content hash comparison between the extracted original project and the final full project after applying the corrected Daily Market Summary overlay.
 
-## Result
+## Summary
 
-- Modified files: 19
-- Added files: 7
-- Deleted files: 0
-- Unchanged files: 217
+```text
+Added files: 10
+Modified files: 30
+Deleted files: 0
+Unchanged files: 215
+Total final files: 255
+```
 
-## Scope control
+## Safety checks
 
-- Backend changes are limited to the CSE import/config/schema/test area.
-- Python changes are limited to the CSE GICS worker importer and GICS parser fixtures/tests.
-- Mega Panel changes are limited to CSE import/fetch-run API/types/UI support required by the GICS module.
-- Existing A–Z and Trade Summary import paths remain separate.
-- No Playwright/Chromium package, code path, or browser runtime dependency was added.
+- Deleted files: 0 ✅
+- Unexpected changed files: 0 ✅
+- Playwright/Chromium additions: 0 ✅
+- Full project included: Yes ✅
+- Corrected Daily Market Summary package applied: Yes ✅
 
-## Deleted files check
+## Added files
 
-No project files are deleted in the corrected package.
+- `CORRECTION_SUMMARY.md`
+- `apps/backend/src/modules/cse/cse.dailyMarketSummary.test.ts`
+- `apps/mega-panel/app/api/cse/import/daily-market-summary/run/route.ts`
+- `apps/mega-panel/hooks/useDailyMarketSummary.ts`
+- `apps/python-worker/app/cse_daily_market_summary_importer.py`
+- `apps/python-worker/tests/fixtures/daily_market_summary.html`
+- `apps/python-worker/tests/fixtures/daily_market_summary_api_complete.json`
+- `apps/python-worker/tests/fixtures/daily_market_summary_api_partial.json`
+- `apps/python-worker/tests/test_cse_daily_market_summary_importer.py`
+- `docs/CSE_DAILY_MARKET_SUMMARY_IMPORTER.md`
+
+## Modified files
+
+- `.env.example`
+- `FILE_COMPARISON_REPORT.md`
+- `FILE_CONTENT_HASH_DIFF.patch`
+- `FULL_CONTENT_DIFF.patch`
+- `FULL_PROJECT_PACKAGE_REPORT.md`
+- `MODIFIED_ONLY_MANIFEST.md`
+- `README_APPLY_FIRST.md`
+- `TEST_RESULTS.md`
+- `apps/backend/src/config/env.ts`
+- `apps/backend/src/database/schema.sql`
+- `apps/backend/src/modules/cse/cse.analytics.service.ts`
+- `apps/backend/src/modules/cse/cse.controller.ts`
+- `apps/backend/src/modules/cse/cse.fetcher.ts`
+- `apps/backend/src/modules/cse/cse.repository.ts`
+- `apps/backend/src/modules/cse/cse.routes.ts`
+- `apps/backend/src/modules/cse/cse.scheduler.ts`
+- `apps/backend/src/modules/cse/cse.service.ts`
+- `apps/backend/src/modules/cse/cse.sourceGuard.ts`
+- `apps/backend/src/modules/cse/cse.types.ts`
+- `apps/backend/src/server.ts`
+- `apps/mega-panel/app/cse-import/page.tsx`
+- `apps/mega-panel/components/cse/ImportControlPanel.tsx`
+- `apps/mega-panel/lib/api/cse.ts`
+- `apps/mega-panel/lib/types/cse.ts`
+- `apps/python-worker/app/config.py`
+- `apps/python-worker/app/main.py`
+- `docs/IMPLEMENTATION_SUMMARY.md`
+- `docs/TEST_RESULTS.md`
+- `modified-file-hashes.sha256`
+- `original-file-hashes.sha256`
+
+## Deleted files
+
+- None
