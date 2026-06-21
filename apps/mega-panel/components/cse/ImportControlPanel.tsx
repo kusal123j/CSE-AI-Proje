@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { runCseImport, runTradeSummaryImport } from '@/lib/api/cse';
+import { runCseImport, runGicsImport, runTradeSummaryImport } from '@/lib/api/cse';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +30,7 @@ function Stat({ label, value }: { label: string; value: string | number | null |
 export function ImportControlPanel({ config, onRunFinished }: { config?: CseImportConfig | null; onRunFinished?: () => void }) {
   const [runningAlphabetical, setRunningAlphabetical] = useState(false);
   const [runningTradeSummary, setRunningTradeSummary] = useState(false);
+  const [runningGics, setRunningGics] = useState(false);
   const [result, setResult] = useState<unknown | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +66,22 @@ export function ImportControlPanel({ config, onRunFinished }: { config?: CseImpo
     }
   }
 
+  async function handleGicsRun() {
+    setRunningGics(true);
+    setError(null);
+    setResult(null);
+    try {
+      const response = await runGicsImport();
+      setResult(response);
+      onRunFinished?.();
+      window.setTimeout(() => onRunFinished?.(), 1500);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setRunningGics(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <Card>
@@ -76,7 +93,7 @@ export function ImportControlPanel({ config, onRunFinished }: { config?: CseImpo
             </div>
             <CardDescription>Triggers the existing CSE Listed Company Directory ALPHABETICAL A–Z Python HTTP importer.</CardDescription>
           </div>
-          <Button onClick={handleAlphabeticalRun} disabled={runningAlphabetical || runningTradeSummary}>{runningAlphabetical ? 'Starting…' : 'Start A–Z Import'}</Button>
+          <Button onClick={handleAlphabeticalRun} disabled={runningAlphabetical || runningTradeSummary || runningGics}>{runningAlphabetical ? 'Starting…' : 'Start A–Z Import'}</Button>
         </CardHeader>
         <div className="grid gap-3 md:grid-cols-4">
           <Stat label="Import mode" value={config?.mode || 'python-http'} />
@@ -95,7 +112,7 @@ export function ImportControlPanel({ config, onRunFinished }: { config?: CseImpo
             </div>
             <CardDescription>Starts the daily share trading statistics import: previous close, open, high, low, last trade, volumes, change %, and Watch List flags. The backend runs the job asynchronously and this panel refreshes the latest status after trigger.</CardDescription>
           </div>
-          <Button onClick={handleTradeSummaryRun} disabled={runningAlphabetical || runningTradeSummary || config?.tradeSummary?.enabled === false}>
+          <Button onClick={handleTradeSummaryRun} disabled={runningAlphabetical || runningTradeSummary || runningGics || config?.tradeSummary?.enabled === false}>
             {runningTradeSummary ? 'Starting…' : 'Start Trade Summary Import'}
           </Button>
         </CardHeader>
@@ -107,6 +124,31 @@ export function ImportControlPanel({ config, onRunFinished }: { config?: CseImpo
         </div>
         <Alert tone="warning" className="mt-4">
           Trade Summary is saved as daily market activity. It does not replace the A–Z company/security master importer. No Playwright/Chromium browser automation is used.
+        </Alert>
+      </Card>
+
+
+      <Card>
+        <CardHeader>
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <CardTitle>GICS industry intelligence import</CardTitle>
+              <Badge tone="warning">Industry groups</Badge>
+            </div>
+            <CardDescription>Imports official CSE GICS Summary, Industry Group Indices, and Classification data as a separate enrichment module. This does not replace A–Z or Trade Summary data.</CardDescription>
+          </div>
+          <Button onClick={handleGicsRun} disabled={runningAlphabetical || runningTradeSummary || runningGics || config?.gics?.enabled === false}>
+            {runningGics ? 'Starting…' : 'Start GICS Import'}
+          </Button>
+        </CardHeader>
+        <div className="grid gap-3 md:grid-cols-4">
+          <Stat label="Source" value={config?.gics?.source || 'CSE_GICS'} />
+          <Stat label="Expected groups" value={config?.gics?.minExpectedGroups || 20} />
+          <Stat label="Min classifications" value={config?.gics?.minExpectedClassificationRows || 250} />
+          <Stat label="Automation" value={config?.gics?.browserAutomationEnabled ? 'Browser enabled' : 'HTTP/API only'} />
+        </div>
+        <Alert tone="warning" className="mt-4">
+          GICS uses lightweight HTTP/API/download/HTML parsing only. Unmapped symbols are reported as warnings and are not blindly created as securities.
         </Alert>
       </Card>
 

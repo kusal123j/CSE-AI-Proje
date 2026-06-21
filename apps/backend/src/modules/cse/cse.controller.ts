@@ -3,7 +3,7 @@ import { ok } from '../../utils/apiResponse';
 import { AppError } from '../../middleware/errorHandler';
 import { cseService } from './cse.service';
 import { cseAnalyticsService } from './cse.analytics.service';
-import { findFetchRun, listFetchRuns } from './cse.repository';
+import { findFetchRun, gicsDashboard, listFetchRuns, listGicsClassifications, listGicsGroups, listGicsIndices, listGicsSummary, listGicsUnmapped } from './cse.repository';
 
 function page(req: Request) {
   return req.query.page ? Number(req.query.page) : undefined;
@@ -22,6 +22,11 @@ export const cseController = {
   async runTradeSummaryImport(req: Request, res: Response) {
     const tradingDate = typeof req.body?.tradingDate === 'string' ? req.body.tradingDate : undefined;
     return ok(res, await cseService.startTradeSummaryImportJob({ tradingDate, triggerType: 'manual' }), 202);
+  },
+
+  async runGicsImport(req: Request, res: Response) {
+    const tradingDate = typeof req.body?.tradingDate === 'string' ? req.body.tradingDate : undefined;
+    return ok(res, await cseService.startGicsImportJob({ tradingDate, triggerType: 'manual' }), 202);
   },
 
   async summary(_req: Request, res: Response) {
@@ -102,5 +107,29 @@ export const cseController = {
 
   async marketBreadth(req: Request, res: Response) {
     return ok(res, await cseAnalyticsService.marketBreadth({ date: String(req.query.date || '') }));
+  },
+
+  async gicsDashboard(_req: Request, res: Response) {
+    return ok(res, await gicsDashboard());
+  },
+
+  async listGicsGroups(_req: Request, res: Response) {
+    return ok(res, await listGicsGroups());
+  },
+
+  async listGicsSummary(req: Request, res: Response) {
+    return ok(res, await listGicsSummary(limit(req)));
+  },
+
+  async listGicsIndices(req: Request, res: Response) {
+    return ok(res, await listGicsIndices(limit(req)));
+  },
+
+  async listGicsClassifications(req: Request, res: Response) {
+    return ok(res, await listGicsClassifications(limit(req), String(req.query.search ?? '')));
+  },
+
+  async listGicsUnmapped(_req: Request, res: Response) {
+    return ok(res, await listGicsUnmapped());
   }
 };

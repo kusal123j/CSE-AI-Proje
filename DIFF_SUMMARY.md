@@ -1,22 +1,18 @@
-# DIFF SUMMARY
+# Diff Summary — Corrected CSE GICS Import Package
 
-Correction pass completed to raise the Trade Summary package above 9-star readiness.
+## Counts
 
-## Main improvements over previous package
+- Modified files: 19
+- Added files: 7
+- Deleted files: 0
+- Unchanged files: 217
 
-1. CSV fallback is stronger: API → configured CSV → discovered CSV/export URL → HTML table fallback.
-2. Watch List detection is stronger: API fields, status text, and highlighted HTML classes are supported.
-3. Backend behavior tests increased from 33 to 36 total backend tests.
-4. Python worker tests increased from 15 to 18 tests.
-5. Mega Panel now says “Start Trade Summary Import” and refreshes latest status shortly after trigger.
-6. Final hash and full-content diffs were regenerated.
+## Key corrections
 
-## Validation summary
-
-- Backend tests: 36 passed.
-- Backend build: passed.
-- Python worker tests: 18 passed.
-- Mega Panel tests: 13 passed.
-- Mega Panel typecheck: passed.
-- Mega Panel build: passed with existing Next/Turbopack tracing warning only.
-- No Playwright/Chromium dependency added for CSE importing.
+- Replaced fragile GICS HTML table parsing with a CSE-aware parser that uses `<thead>` rows only and no longer treats first data rows as headers.
+- Added explicit parsers for GICS Summary metric rows, Summary group mapping rows, Industry Group Indices rows, and Classification rows.
+- Added fixture-based Python tests using the supplied CSE HTML snapshots for Summary, Indices, and Classification.
+- Added backend GICS validation/source-guard tests and stricter validation for zero summary mapping rows.
+- Added backend artifact reports for validation, download discovery, and group fetch diagnostics.
+- Preserved the separate `CSE_GICS` source family and did not merge with A–Z or Trade Summary.
+- No Playwright/Chromium browser automation was added.

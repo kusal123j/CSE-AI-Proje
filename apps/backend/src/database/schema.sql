@@ -415,3 +415,140 @@ DROP TRIGGER IF EXISTS cse_daily_market_snapshots_set_updated_at ON cse_daily_ma
 CREATE TRIGGER cse_daily_market_snapshots_set_updated_at
 BEFORE UPDATE ON cse_daily_market_snapshots
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- -----------------------------------------------------------------------------
+-- CSE GICS importer: official industry groups, group summary, indices, and
+-- security-to-industry classification enrichment. Kept separate from A-Z master
+-- and Trade Summary daily snapshots.
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS cse_gics_industry_groups (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  industry_group_code VARCHAR(30) NOT NULL UNIQUE,
+  gics_code VARCHAR(20) NOT NULL UNIQUE,
+  symbol VARCHAR(20) NOT NULL UNIQUE,
+  industry_group_name TEXT NOT NULL,
+  source_url TEXT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cse_gics_group_daily_summaries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  industry_group_id UUID REFERENCES cse_gics_industry_groups(id) ON DELETE SET NULL,
+  industry_group_code VARCHAR(30) NOT NULL,
+  gics_code VARCHAR(20),
+  index_code VARCHAR(30),
+  trading_date DATE NOT NULL,
+  index_value NUMERIC(18, 4),
+  turnover_value NUMERIC(20, 4),
+  turnover_volume BIGINT,
+  trade_volume BIGINT,
+  per NUMERIC(12, 6),
+  pbv NUMERIC(12, 6),
+  dy NUMERIC(12, 6),
+  companies_traded INTEGER,
+  companies_listed INTEGER,
+  source_market_date_text TEXT,
+  import_run_id UUID REFERENCES cse_fetch_runs(id) ON DELETE SET NULL,
+  raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_gics_summary_group_date_unique UNIQUE (industry_group_code, trading_date)
+);
+
+CREATE TABLE IF NOT EXISTS cse_gics_group_indices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  industry_group_id UUID REFERENCES cse_gics_industry_groups(id) ON DELETE SET NULL,
+  industry_group_name TEXT NOT NULL,
+  index_code VARCHAR(30) NOT NULL,
+  gics_code VARCHAR(20),
+  market_timestamp TIMESTAMPTZ,
+  trading_date DATE NOT NULL,
+  today_index NUMERIC(18, 4),
+  previous_index NUMERIC(18, 4),
+  index_change NUMERIC(18, 4),
+  index_change_percent NUMERIC(12, 6),
+  turnover_value NUMERIC(20, 4),
+  turnover_volume BIGINT,
+  trades BIGINT,
+  source_market_timestamp_text TEXT,
+  import_run_id UUID REFERENCES cse_fetch_runs(id) ON DELETE SET NULL,
+  raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_gics_index_code_date_unique UNIQUE (index_code, trading_date)
+);
+
+CREATE TABLE IF NOT EXISTS cse_security_gics_classifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  security_id UUID REFERENCES cse_securities(id) ON DELETE SET NULL,
+  symbol VARCHAR(30) NOT NULL,
+  normalized_symbol VARCHAR(30) NOT NULL UNIQUE,
+  company_name TEXT NOT NULL,
+  industry_group_id UUID REFERENCES cse_gics_industry_groups(id) ON DELETE SET NULL,
+  industry_group_name TEXT NOT NULL,
+  industry_group_code VARCHAR(30),
+  gics_code VARCHAR(20),
+  is_current BOOLEAN NOT NULL DEFAULT true,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_import_run_id UUID REFERENCES cse_fetch_runs(id) ON DELETE SET NULL,
+  raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cse_gics_classification_snapshots (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  security_id UUID REFERENCES cse_securities(id) ON DELETE SET NULL,
+  symbol VARCHAR(30) NOT NULL,
+  normalized_symbol VARCHAR(30) NOT NULL,
+  company_name TEXT NOT NULL,
+  industry_group_id UUID REFERENCES cse_gics_industry_groups(id) ON DELETE SET NULL,
+  industry_group_name TEXT NOT NULL,
+  trading_date DATE NOT NULL,
+  last_traded_time TEXT,
+  last_traded_price NUMERIC(18, 4),
+  trade_volume BIGINT,
+  share_volume BIGINT,
+  turnover NUMERIC(20, 4),
+  change_amount NUMERIC(18, 4),
+  change_percent NUMERIC(12, 6),
+  ytd_change_percent NUMERIC(12, 6),
+  import_run_id UUID REFERENCES cse_fetch_runs(id) ON DELETE SET NULL,
+  raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_gics_snapshot_symbol_date_group_unique UNIQUE (normalized_symbol, trading_date, industry_group_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cse_gics_groups_name ON cse_gics_industry_groups(industry_group_name);
+CREATE INDEX IF NOT EXISTS idx_cse_gics_summary_date ON cse_gics_group_daily_summaries(trading_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_gics_indices_date ON cse_gics_group_indices(trading_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_security_gics_group ON cse_security_gics_classifications(industry_group_id);
+CREATE INDEX IF NOT EXISTS idx_cse_security_gics_symbol ON cse_security_gics_classifications(normalized_symbol);
+CREATE INDEX IF NOT EXISTS idx_cse_gics_snapshot_date ON cse_gics_classification_snapshots(trading_date DESC);
+
+DROP TRIGGER IF EXISTS cse_gics_industry_groups_set_updated_at ON cse_gics_industry_groups;
+CREATE TRIGGER cse_gics_industry_groups_set_updated_at
+BEFORE UPDATE ON cse_gics_industry_groups
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS cse_gics_group_daily_summaries_set_updated_at ON cse_gics_group_daily_summaries;
+CREATE TRIGGER cse_gics_group_daily_summaries_set_updated_at
+BEFORE UPDATE ON cse_gics_group_daily_summaries
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS cse_gics_group_indices_set_updated_at ON cse_gics_group_indices;
+CREATE TRIGGER cse_gics_group_indices_set_updated_at
+BEFORE UPDATE ON cse_gics_group_indices
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS cse_security_gics_classifications_set_updated_at ON cse_security_gics_classifications;
+CREATE TRIGGER cse_security_gics_classifications_set_updated_at
+BEFORE UPDATE ON cse_security_gics_classifications
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();

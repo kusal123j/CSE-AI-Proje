@@ -1,6 +1,6 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../../config/database';
-import { CseImportValidationReport, ParsedCseAlphabeticalRow, ParsedCseTradeSummaryRow } from './cse.types';
+import { CseGicsPromotionResult, CseImportValidationReport, ParsedCseAlphabeticalRow, ParsedCseGicsClassificationRow, ParsedCseGicsIndexRow, ParsedCseGicsIndustryGroupRow, ParsedCseGicsSummaryRow, ParsedCseTradeSummaryRow } from './cse.types';
 
 export interface FetchRunInput {
   sourceUrl: string;
@@ -552,3 +552,341 @@ export async function promoteTradeSummaryRows(
   }
 }
 
+
+async function upsertGicsIndustryGroupWithClient(client: PoolClient, row: ParsedCseGicsIndustryGroupRow, sourceUrl: string) {
+  const result = await client.query(
+    `INSERT INTO cse_gics_industry_groups (
+       industry_group_code, gics_code, symbol, industry_group_name, source_url, first_seen_at, last_seen_at, is_active, raw_row
+     ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), true, $6::jsonb)
+     ON CONFLICT (industry_group_code)
+     DO UPDATE SET
+       gics_code = EXCLUDED.gics_code,
+       symbol = EXCLUDED.symbol,
+       industry_group_name = EXCLUDED.industry_group_name,
+       source_url = EXCLUDED.source_url,
+       last_seen_at = NOW(),
+       is_active = true,
+       raw_row = EXCLUDED.raw_row
+     RETURNING *, (xmax = 0) AS inserted`,
+    [row.industryGroupCode, row.gicsCode, row.symbol, row.industryGroupName, sourceUrl, JSON.stringify(row.rawRow)]
+  );
+  return result.rows[0];
+}
+
+async function findGicsGroupForSummary(client: PoolClient, row: { industryGroupCode?: string; gicsCode?: string; industryGroupName?: string; indexCode?: string }) {
+  const result = await client.query(
+    `SELECT * FROM cse_gics_industry_groups
+     WHERE industry_group_code = $1
+        OR gics_code = $2
+        OR industry_group_name = $3
+        OR industry_group_code = $4
+     LIMIT 1`,
+    [row.industryGroupCode ?? null, row.gicsCode ?? null, row.industryGroupName ?? null, row.indexCode ?? null]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function promoteGicsRows(
+  runId: string,
+  input: {
+    tradingDate: string;
+    sourceUrl: string;
+    industryGroups: ParsedCseGicsIndustryGroupRow[];
+    summaryRows: ParsedCseGicsSummaryRow[];
+    indexRows: ParsedCseGicsIndexRow[];
+    classificationRows: ParsedCseGicsClassificationRow[];
+  }
+): Promise<CseGicsPromotionResult> {
+  const client = await pool.connect();
+  const result: CseGicsPromotionResult = {
+    industryGroupsCreated: 0,
+    industryGroupsUpdated: 0,
+    summariesCreated: 0,
+    summariesUpdated: 0,
+    indicesCreated: 0,
+    indicesUpdated: 0,
+    classificationsCreated: 0,
+    classificationsUpdated: 0,
+    classificationSnapshotsCreated: 0,
+    classificationSnapshotsUpdated: 0,
+    unmappedSymbols: [],
+    warnings: []
+  };
+
+  try {
+    await client.query('BEGIN');
+
+    for (const row of input.industryGroups) {
+      const group = await upsertGicsIndustryGroupWithClient(client, row, input.sourceUrl);
+      if (group.inserted) result.industryGroupsCreated += 1;
+      else result.industryGroupsUpdated += 1;
+    }
+
+    for (const row of input.summaryRows) {
+      const group = await findGicsGroupForSummary(client, { industryGroupCode: row.industryGroupCode, indexCode: row.indexCode });
+      const summary = await client.query(
+        `INSERT INTO cse_gics_group_daily_summaries (
+           industry_group_id, industry_group_code, gics_code, index_code, trading_date, index_value,
+           turnover_value, turnover_volume, trade_volume, per, pbv, dy, companies_traded,
+           companies_listed, source_market_date_text, import_run_id, raw_row
+         ) VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
+         ON CONFLICT (industry_group_code, trading_date)
+         DO UPDATE SET
+           industry_group_id = EXCLUDED.industry_group_id,
+           gics_code = EXCLUDED.gics_code,
+           index_code = EXCLUDED.index_code,
+           index_value = EXCLUDED.index_value,
+           turnover_value = EXCLUDED.turnover_value,
+           turnover_volume = EXCLUDED.turnover_volume,
+           trade_volume = EXCLUDED.trade_volume,
+           per = EXCLUDED.per,
+           pbv = EXCLUDED.pbv,
+           dy = EXCLUDED.dy,
+           companies_traded = EXCLUDED.companies_traded,
+           companies_listed = EXCLUDED.companies_listed,
+           source_market_date_text = EXCLUDED.source_market_date_text,
+           import_run_id = EXCLUDED.import_run_id,
+           raw_row = EXCLUDED.raw_row
+         RETURNING *, (xmax = 0) AS inserted`,
+        [
+          group?.id ?? null,
+          row.industryGroupCode,
+          group?.gics_code ?? null,
+          row.indexCode,
+          input.tradingDate,
+          row.indexValue,
+          row.turnoverValue,
+          row.turnoverVolume,
+          row.tradeVolume,
+          row.per,
+          row.pbv,
+          row.dy,
+          row.companiesTraded,
+          row.companiesListed,
+          input.tradingDate,
+          runId,
+          JSON.stringify(row.rawRow)
+        ]
+      );
+      if (summary.rows[0]?.inserted) result.summariesCreated += 1;
+      else result.summariesUpdated += 1;
+    }
+
+    for (const row of input.indexRows) {
+      const group = await findGicsGroupForSummary(client, { gicsCode: row.gicsCode, industryGroupName: row.industryGroupName, indexCode: row.indexCode });
+      const index = await client.query(
+        `INSERT INTO cse_gics_group_indices (
+           industry_group_id, industry_group_name, index_code, gics_code, trading_date, today_index,
+           previous_index, index_change, index_change_percent, turnover_value, turnover_volume,
+           trades, source_market_timestamp_text, import_run_id, raw_row
+         ) VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
+         ON CONFLICT (index_code, trading_date)
+         DO UPDATE SET
+           industry_group_id = EXCLUDED.industry_group_id,
+           industry_group_name = EXCLUDED.industry_group_name,
+           gics_code = EXCLUDED.gics_code,
+           today_index = EXCLUDED.today_index,
+           previous_index = EXCLUDED.previous_index,
+           index_change = EXCLUDED.index_change,
+           index_change_percent = EXCLUDED.index_change_percent,
+           turnover_value = EXCLUDED.turnover_value,
+           turnover_volume = EXCLUDED.turnover_volume,
+           trades = EXCLUDED.trades,
+           source_market_timestamp_text = EXCLUDED.source_market_timestamp_text,
+           import_run_id = EXCLUDED.import_run_id,
+           raw_row = EXCLUDED.raw_row
+         RETURNING *, (xmax = 0) AS inserted`,
+        [
+          group?.id ?? null,
+          row.industryGroupName,
+          row.indexCode,
+          row.gicsCode,
+          input.tradingDate,
+          row.todayIndex,
+          row.previousIndex,
+          row.indexChange,
+          row.indexChangePercent,
+          row.turnoverValue,
+          row.turnoverVolume,
+          row.trades,
+          input.tradingDate,
+          runId,
+          JSON.stringify(row.rawRow)
+        ]
+      );
+      if (index.rows[0]?.inserted) result.indicesCreated += 1;
+      else result.indicesUpdated += 1;
+    }
+
+    for (const row of input.classificationRows) {
+      const group = await findGicsGroupForSummary(client, { industryGroupName: row.industryGroupName });
+      const security = await client.query(`SELECT * FROM cse_securities WHERE normalized_symbol = $1 LIMIT 1`, [row.normalizedSymbol]);
+      const securityId = security.rows[0]?.id ?? null;
+      if (!securityId) result.unmappedSymbols.push(row.normalizedSymbol);
+
+      const classification = await client.query(
+        `INSERT INTO cse_security_gics_classifications (
+           security_id, symbol, normalized_symbol, company_name, industry_group_id, industry_group_name,
+           industry_group_code, gics_code, is_current, first_seen_at, last_seen_at, last_seen_import_run_id, raw_row
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW(), $9, $10::jsonb)
+         ON CONFLICT (normalized_symbol)
+         DO UPDATE SET
+           security_id = EXCLUDED.security_id,
+           symbol = EXCLUDED.symbol,
+           company_name = EXCLUDED.company_name,
+           industry_group_id = EXCLUDED.industry_group_id,
+           industry_group_name = EXCLUDED.industry_group_name,
+           industry_group_code = EXCLUDED.industry_group_code,
+           gics_code = EXCLUDED.gics_code,
+           is_current = true,
+           last_seen_at = NOW(),
+           last_seen_import_run_id = EXCLUDED.last_seen_import_run_id,
+           raw_row = EXCLUDED.raw_row
+         RETURNING *, (xmax = 0) AS inserted`,
+        [
+          securityId,
+          row.symbol,
+          row.normalizedSymbol,
+          row.companyName,
+          group?.id ?? null,
+          row.industryGroupName,
+          group?.industry_group_code ?? null,
+          group?.gics_code ?? null,
+          runId,
+          JSON.stringify(row.rawRow)
+        ]
+      );
+      if (classification.rows[0]?.inserted) result.classificationsCreated += 1;
+      else result.classificationsUpdated += 1;
+
+      const snapshot = await client.query(
+        `INSERT INTO cse_gics_classification_snapshots (
+           security_id, symbol, normalized_symbol, company_name, industry_group_id, industry_group_name, trading_date,
+           last_traded_time, last_traded_price, trade_volume, share_volume, turnover, change_amount,
+           change_percent, ytd_change_percent, import_run_id, raw_row
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
+         ON CONFLICT (normalized_symbol, trading_date, industry_group_id)
+         DO UPDATE SET
+           security_id = EXCLUDED.security_id,
+           symbol = EXCLUDED.symbol,
+           company_name = EXCLUDED.company_name,
+           industry_group_name = EXCLUDED.industry_group_name,
+           last_traded_time = EXCLUDED.last_traded_time,
+           last_traded_price = EXCLUDED.last_traded_price,
+           trade_volume = EXCLUDED.trade_volume,
+           share_volume = EXCLUDED.share_volume,
+           turnover = EXCLUDED.turnover,
+           change_amount = EXCLUDED.change_amount,
+           change_percent = EXCLUDED.change_percent,
+           ytd_change_percent = EXCLUDED.ytd_change_percent,
+           import_run_id = EXCLUDED.import_run_id,
+           raw_row = EXCLUDED.raw_row
+         RETURNING *, (xmax = 0) AS inserted`,
+        [
+          securityId,
+          row.symbol,
+          row.normalizedSymbol,
+          row.companyName,
+          group?.id ?? null,
+          row.industryGroupName,
+          input.tradingDate,
+          row.lastTradedTime,
+          row.lastTradedPrice,
+          row.tradeVolume,
+          row.shareVolume,
+          row.turnover,
+          row.changeAmount,
+          row.changePercent,
+          row.ytdChangePercent,
+          runId,
+          JSON.stringify(row.rawRow)
+        ]
+      );
+      if (snapshot.rows[0]?.inserted) result.classificationSnapshotsCreated += 1;
+      else result.classificationSnapshotsUpdated += 1;
+    }
+
+    await client.query(
+      `UPDATE cse_security_gics_classifications
+       SET is_current = false
+       WHERE is_current = true
+         AND (last_seen_import_run_id IS NULL OR last_seen_import_run_id <> $1)`,
+      [runId]
+    );
+
+    if (result.unmappedSymbols.length > 0) {
+      result.warnings.push(`${result.unmappedSymbols.length} GICS symbols were not found in cse_securities and were saved as unmapped warnings.`);
+    }
+
+    await client.query('COMMIT');
+    return { ...result, unmappedSymbols: Array.from(new Set(result.unmappedSymbols)).sort() };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function listGicsGroups() {
+  const result = await query(`SELECT * FROM cse_gics_industry_groups WHERE is_active = true ORDER BY industry_group_name ASC`);
+  return result.rows;
+}
+
+export async function listGicsSummary(limit = 50) {
+  const result = await query(
+    `SELECT s.*, g.industry_group_name
+     FROM cse_gics_group_daily_summaries s
+     LEFT JOIN cse_gics_industry_groups g ON g.id = s.industry_group_id
+     ORDER BY s.trading_date DESC, COALESCE(s.turnover_value, 0) DESC
+     LIMIT $1`,
+    [Math.min(Math.max(limit, 1), 500)]
+  );
+  return result.rows;
+}
+
+export async function listGicsIndices(limit = 50) {
+  const result = await query(
+    `SELECT * FROM cse_gics_group_indices ORDER BY trading_date DESC, industry_group_name ASC LIMIT $1`,
+    [Math.min(Math.max(limit, 1), 500)]
+  );
+  return result.rows;
+}
+
+export async function listGicsClassifications(limit = 100, search = '') {
+  const result = await query(
+    `SELECT c.*, sec.id IS NOT NULL AS is_mapped
+     FROM cse_security_gics_classifications c
+     LEFT JOIN cse_securities sec ON sec.id = c.security_id
+     WHERE c.is_current = true
+       AND ($2 = '' OR c.company_name ILIKE '%' || $2 || '%' OR c.normalized_symbol ILIKE '%' || UPPER($2) || '%' OR c.industry_group_name ILIKE '%' || $2 || '%')
+     ORDER BY c.industry_group_name ASC, c.normalized_symbol ASC
+     LIMIT $1`,
+    [Math.min(Math.max(limit, 1), 500), search.trim()]
+  );
+  return result.rows;
+}
+
+export async function listGicsUnmapped() {
+  const result = await query(
+    `SELECT * FROM cse_security_gics_classifications WHERE is_current = true AND security_id IS NULL ORDER BY normalized_symbol ASC`
+  );
+  return result.rows;
+}
+
+export async function gicsDashboard() {
+  const [groups, classifications, unmapped, latestSummary, latestIndex] = await Promise.all([
+    query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM cse_gics_industry_groups WHERE is_active = true`),
+    query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM cse_security_gics_classifications WHERE is_current = true`),
+    query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM cse_security_gics_classifications WHERE is_current = true AND security_id IS NULL`),
+    query(`SELECT MAX(trading_date)::text AS trading_date FROM cse_gics_group_daily_summaries`),
+    query(`SELECT MAX(trading_date)::text AS trading_date FROM cse_gics_group_indices`)
+  ]);
+  return {
+    groupCount: Number(groups.rows[0]?.count ?? 0),
+    classificationCount: Number(classifications.rows[0]?.count ?? 0),
+    unmappedCount: Number(unmapped.rows[0]?.count ?? 0),
+    latestSummaryDate: latestSummary.rows[0]?.trading_date ?? null,
+    latestIndexDate: latestIndex.rows[0]?.trading_date ?? null
+  };
+}

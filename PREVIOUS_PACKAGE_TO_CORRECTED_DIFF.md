@@ -1,52 +1,15 @@
-# Previous Corrected Package to Final Fully Corrected Package
+# Previous Package to Corrected Package Difference
 
-This file records the final changes made after the independent 8.8/10 review of the previous corrected package.
+Compared with the previous GICS package, this corrected package focuses on reliability fixes rather than broad new features.
 
-## Final fixes added
+## Main differences
 
-- `apps/backend/src/modules/cse/cse.validator.ts`
-  - Valid empty letters now count as completed terminal letters.
-  - Artifact-only status now infers `success` or `empty` from row count.
+- Python GICS parser rewritten to parse the real supplied CSE Summary and Classification HTML snapshots correctly.
+- Added `tests/test_cse_gics_importer.py` and fixture HTML files for Summary, Indices, and Classification.
+- Backend GICS validation now explicitly fails when the Summary industry-group mapping table is empty.
+- Backend writes dedicated GICS validation, download-discovery, and group-fetch reports.
+- GICS service duplicate `indexRows` property removed.
 
-- `apps/backend/src/modules/cse/cse.fetcher.ts`
-  - Fallback `lettersSuccessful` calculation now counts both `success` and `empty` letter statuses.
+## Intended outcome
 
-- `apps/backend/src/modules/cse/cse.validator.test.ts`
-  - Added validation test proving valid empty letters pass as completed A-Z letters.
-
-- `apps/python-worker/app/cse_http_importer.py`
-  - `lettersSuccessful` now counts both `success` and `empty` results.
-
-- `apps/python-worker/tests/test_cse_http_importer.py`
-  - Added per-letter valid-empty test.
-  - Added run-level count test for successful + empty letters.
-
-- `apps/mega-panel/tsconfig.json`
-  - Removed unused missing `@testing-library/jest-dom` type reference so Mega Panel typecheck passes.
-
-- `apps/mega-panel/app/page.tsx`
-  - Replaced stale “browser import executions” wording with HTTP/API A-Z import wording.
-
-- `apps/mega-panel/components/cse/ImportControlPanel.tsx`
-  - Replaced stale “Retries / browser automation” wording with HTTP/API automation mode wording.
-
-- `docs/SECURITY_REVIEW.md`
-  - Replaced old browser/download explanation with current HTTP/API A-Z import description.
-
-- `docs/TESTING_NOTES.md` and `docs/TEST_RESULTS.md`
-  - Updated verification counts and final test results.
-
-## Removed from final package
-
-- `docs/A_Z_BROWSER_DOWNLOAD_FETCHER_NOTES.md`
-- `docs/PACKAGE_FILE_MANIFEST_BROWSER_AZ.txt`
-- `apps/mega-panel/tsconfig.tsbuildinfo`
-- `node_modules`, `__pycache__`, and pytest cache artifacts
-
-## Final verification added
-
-```text
-Backend tests: 29/29 passed
-Python worker tests: 11/11 passed
-Mega Panel typecheck: passed
-```
+The corrected package is designed to pass the specific failure points found in the independent review and block unsafe partial promotion.

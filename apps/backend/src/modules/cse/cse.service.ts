@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
-import { fetchAlphabeticalRows, fetchTradeSummaryRows } from './cse.fetcher';
+import { fetchAlphabeticalRows, fetchGicsRows, fetchTradeSummaryRows } from './cse.fetcher';
 import {
   countRunningFetchRuns,
   createFetchRun,
@@ -11,6 +11,7 @@ import {
   latestFetchRun,
   latestSuccessfulFetchRun,
   listImportArtifacts,
+  promoteGicsRows,
   promoteStagedAlphabeticalRows,
   promoteTradeSummaryRows,
   saveAlphabeticalRowsToStage,
@@ -21,6 +22,7 @@ import { validateFetchedAlphabeticalResult } from './cse.validator';
 
 let inProcessImport = false;
 let inProcessTradeSummaryImport = false;
+let inProcessGicsImport = false;
 
 function sriLankaDateString(date = new Date()): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -330,6 +332,129 @@ async function executeTradeSummaryImport(runId: string, input: { tradingDate: st
   }
 }
 
+async function executeGicsImport(runId: string, input: { tradingDate: string; triggerType: 'manual' | 'scheduled' }): Promise<CseImportResult> {
+  let runAlreadyFinished = false;
+  try {
+    const fetched = await fetchGicsRows({ runId, tradingDate: input.tradingDate });
+
+    await saveImportArtifact({
+      runId,
+      artifactType: 'gics_summary_raw_response',
+      filePath: fetched.rawArtifactPaths.summaryRaw,
+      rowCount: fetched.summaryRows.length
+    });
+    await saveImportArtifact({
+      runId,
+      artifactType: 'gics_indices_raw_response',
+      filePath: fetched.rawArtifactPaths.indicesRaw,
+      rowCount: fetched.indexRows.length
+    });
+    await saveImportArtifact({
+      runId,
+      artifactType: 'gics_classification_raw_response',
+      filePath: fetched.rawArtifactPaths.classificationRaw,
+      rowCount: fetched.classificationRows.length
+    });
+    await saveImportArtifact({ runId, artifactType: 'gics_import_report', filePath: fetched.rawArtifactPaths.importReport, rowCount: fetched.classificationRows.length });
+    const validationReportPath = await writeValidationReport(fetched.rawStoragePath, fetched.validationReport);
+    await saveImportArtifact({ runId, artifactType: 'validation_report', filePath: validationReportPath, rowCount: fetched.classificationRows.length });
+
+    if (!fetched.validationReport.valid) {
+      const errorMessage = `CSE GICS import validation failed: ${fetched.validationReport.errors.join(' | ')}`;
+      await finishFetchRun(runId, {
+        status: 'FAILED',
+        recordsFound: fetched.classificationRows.length,
+        companiesCreated: 0,
+        companiesUpdated: 0,
+        securitiesCreated: 0,
+        securitiesUpdated: 0,
+        snapshotsCreated: 0,
+        snapshotsUpdated: 0,
+        recordsFailed: fetched.classificationRows.length,
+        errorMessage,
+        warnings: fetched.validationReport.warnings,
+        rawFilePath: fetched.rawStoragePath,
+        recordsBeforeDeduplication: fetched.recordsBeforeDeduplication,
+        recordsDeduplicated: fetched.recordsDeduplicated,
+        validationReport: fetched.validationReport as never
+      });
+      runAlreadyFinished = true;
+      throw new AppError(502, errorMessage);
+    }
+
+    const promoted = await promoteGicsRows(runId, {
+      tradingDate: input.tradingDate,
+      sourceUrl: fetched.classificationUrl,
+      industryGroups: fetched.industryGroups,
+      summaryRows: fetched.summaryRows,
+      indexRows: fetched.indexRows,
+      classificationRows: fetched.classificationRows
+    });
+
+    const warnings = [...fetched.warnings, ...promoted.warnings];
+    const status: 'SUCCESS' | 'PARTIAL_SUCCESS' = warnings.length > 0 ? 'PARTIAL_SUCCESS' : 'SUCCESS';
+    const result: CseImportResult = {
+      runId,
+      status,
+      recordsFound: fetched.classificationRows.length,
+      recordsBeforeDeduplication: fetched.recordsBeforeDeduplication,
+      recordsDeduplicated: fetched.recordsDeduplicated,
+      companiesCreated: 0,
+      companiesUpdated: 0,
+      securitiesCreated: promoted.classificationsCreated,
+      securitiesUpdated: promoted.classificationsUpdated,
+      snapshotsCreated: promoted.classificationSnapshotsCreated,
+      snapshotsUpdated: promoted.classificationSnapshotsUpdated,
+      recordsFailed: 0,
+      warnings,
+      rawFilePath: fetched.rawStoragePath,
+      rawStoragePath: fetched.rawStoragePath,
+      tradingDate: input.tradingDate,
+      fetchMode: fetched.fetchMode,
+      validationReport: fetched.validationReport as never
+    };
+
+    await finishFetchRun(runId, {
+      status,
+      recordsFound: result.recordsFound,
+      companiesCreated: promoted.industryGroupsCreated,
+      companiesUpdated: promoted.industryGroupsUpdated,
+      securitiesCreated: promoted.classificationsCreated,
+      securitiesUpdated: promoted.classificationsUpdated,
+      snapshotsCreated: promoted.classificationSnapshotsCreated + promoted.summariesCreated + promoted.indicesCreated,
+      snapshotsUpdated: promoted.classificationSnapshotsUpdated + promoted.summariesUpdated + promoted.indicesUpdated,
+      recordsFailed: 0,
+      warnings,
+      rawFilePath: fetched.rawStoragePath,
+      recordsBeforeDeduplication: fetched.recordsBeforeDeduplication,
+      recordsDeduplicated: fetched.recordsDeduplicated,
+      validationReport: { ...fetched.validationReport, unmappedSymbols: promoted.unmappedSymbols } as never
+    });
+    runAlreadyFinished = true;
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown CSE GICS import error';
+    if (!runAlreadyFinished) {
+      await finishFetchRun(runId, {
+        status: 'FAILED',
+        recordsFound: 0,
+        companiesCreated: 0,
+        companiesUpdated: 0,
+        securitiesCreated: 0,
+        securitiesUpdated: 0,
+        snapshotsCreated: 0,
+        snapshotsUpdated: 0,
+        recordsFailed: 0,
+        errorMessage: message,
+        warnings: []
+      }).catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    inProcessGicsImport = false;
+  }
+}
+
 export const cseService = {
   async startAlphabeticalImportJob(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportStartResult> {
     if (inProcessImport || (await countRunningFetchRuns()) > 0) {
@@ -414,6 +539,50 @@ export const cseService = {
     return executeTradeSummaryImport(run.id, { tradingDate, triggerType });
   },
 
+  async startGicsImportJob(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportStartResult> {
+    if (!env.CSE_GICS_ENABLED) {
+      throw new AppError(403, 'CSE GICS importer is disabled by CSE_GICS_ENABLED=false.');
+    }
+    if (inProcessGicsImport || inProcessTradeSummaryImport || inProcessImport || (await countRunningFetchRuns()) > 0) {
+      throw new AppError(409, 'A CSE import is already running. Wait until the current import finishes before starting another one.');
+    }
+
+    inProcessGicsImport = true;
+    const triggerType = input?.triggerType ?? 'manual';
+    const tradingDate = input?.tradingDate ?? sriLankaDateString();
+    const run = await createFetchRun({ source: 'CSE_GICS', sourceUrl: env.CSE_GICS_CLASSIFICATION_SOURCE_URL, fetchMode: 'python-http', triggerType });
+
+    setImmediate(() => {
+      executeGicsImport(run.id, { tradingDate, triggerType }).catch((error) => {
+        console.error('CSE GICS background import failed', error);
+      });
+    });
+
+    return {
+      ok: true,
+      runId: run.id,
+      status: 'RUNNING',
+      triggerType,
+      tradingDate,
+      message: 'CSE GICS import started. Poll /api/cse/import/runs/:id for status.'
+    };
+  },
+
+  async runGicsImport(input?: { tradingDate?: string; triggerType?: 'manual' | 'scheduled' }): Promise<CseImportResult> {
+    if (!env.CSE_GICS_ENABLED) {
+      throw new AppError(403, 'CSE GICS importer is disabled by CSE_GICS_ENABLED=false.');
+    }
+    if (inProcessGicsImport || inProcessTradeSummaryImport || inProcessImport || (await countRunningFetchRuns()) > 0) {
+      throw new AppError(409, 'A CSE import is already running. Wait until the current import finishes before starting another one.');
+    }
+
+    inProcessGicsImport = true;
+    const triggerType = input?.triggerType ?? 'manual';
+    const tradingDate = input?.tradingDate ?? sriLankaDateString();
+    const run = await createFetchRun({ source: 'CSE_GICS', sourceUrl: env.CSE_GICS_CLASSIFICATION_SOURCE_URL, fetchMode: 'python-http', triggerType });
+    return executeGicsImport(run.id, { tradingDate, triggerType });
+  },
+
   async importConfig() {
     const internalSecretConfigured = Boolean(env.CSE_IMPORT_INTERNAL_SECRET.trim());
     const lastImport = await latestFetchRun();
@@ -440,6 +609,23 @@ export const cseService = {
         timeoutSeconds: env.CSE_TRADE_SUMMARY_TIMEOUT_SECONDS,
         minExpectedRows: env.CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS,
         artifactStorageDir: env.CSE_TRADE_SUMMARY_ARTIFACT_STORAGE_DIR
+      },
+      gics: {
+        enabled: env.CSE_GICS_ENABLED,
+        source: 'CSE_GICS',
+        summaryUrl: env.CSE_GICS_SUMMARY_SOURCE_URL,
+        indicesUrl: env.CSE_GICS_INDICES_SOURCE_URL,
+        classificationUrl: env.CSE_GICS_CLASSIFICATION_SOURCE_URL,
+        fetchMode: 'python-http',
+        csvDownloadPreferred: true,
+        htmlFallbackEnabled: true,
+        browserAutomationEnabled: false,
+        playwrightEnabled: false,
+        schedulerEnabled: env.CSE_GICS_SCHEDULER_ENABLED,
+        minExpectedGroups: env.CSE_GICS_MIN_EXPECTED_GROUPS,
+        minExpectedClassificationRows: env.CSE_GICS_MIN_EXPECTED_CLASSIFICATION_ROWS,
+        timeoutSeconds: env.CSE_GICS_TIMEOUT_SECONDS,
+        artifactStorageDir: env.CSE_GICS_ARTIFACT_STORAGE_DIR
       },
       fetchGranularity: 'A_Z_LETTER_BY_LETTER',
       fullExportSupported: false,

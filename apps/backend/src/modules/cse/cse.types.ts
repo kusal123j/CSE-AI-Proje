@@ -199,3 +199,124 @@ export interface CseListQuery {
   search?: string;
   date?: string;
 }
+
+export interface ParsedCseGicsIndustryGroupRow {
+  industryGroupCode: string;
+  gicsCode: string;
+  symbol: string;
+  industryGroupName: string;
+  rawRow: Record<string, unknown>;
+}
+
+export interface ParsedCseGicsSummaryRow {
+  industryGroupCode: string;
+  indexCode: string;
+  indexValue: number | null;
+  turnoverValue: number | null;
+  turnoverVolume: number | null;
+  tradeVolume: number | null;
+  per: number | null;
+  pbv: number | null;
+  dy: number | null;
+  companiesTraded: number | null;
+  companiesListed: number | null;
+  rawRow: Record<string, unknown>;
+}
+
+export interface ParsedCseGicsIndexRow {
+  industryGroupName: string;
+  indexCode: string;
+  gicsCode: string;
+  todayIndex: number | null;
+  previousIndex: number | null;
+  indexChange: number | null;
+  indexChangePercent: number | null;
+  turnoverValue: number | null;
+  turnoverVolume: number | null;
+  trades: number | null;
+  rawRow: Record<string, unknown>;
+}
+
+export interface ParsedCseGicsClassificationRow {
+  companyName: string;
+  normalizedCompanyName: string;
+  symbol: string;
+  normalizedSymbol: string;
+  industryGroupName: string;
+  lastTradedTime: string | null;
+  lastTradedPrice: number | null;
+  tradeVolume: number | null;
+  shareVolume: number | null;
+  turnover: number | null;
+  changeAmount: number | null;
+  changePercent: number | null;
+  ytdChangePercent: number | null;
+  rawRow: Record<string, unknown>;
+}
+
+export interface CseGicsValidationReport {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  summaryRowCount: number;
+  industryGroupCount: number;
+  indicesRowCount: number;
+  classificationRowCount: number;
+  groupsAttempted: number;
+  groupsSuccessful: number;
+  groupsFailed: number;
+  duplicateSymbols: string[];
+  unmappedSymbols?: string[];
+  thresholds: {
+    minExpectedGroups: number;
+    minExpectedClassificationRows: number;
+  };
+  promotionAllowed: boolean;
+}
+
+export interface FetchGicsResult {
+  sourceUrl: string;
+  summaryUrl: string;
+  indicesUrl: string;
+  classificationUrl: string;
+  fetchMode: CseFetchMode;
+  warnings: string[];
+  rawContent: string;
+  rawStoragePath: string;
+  rawArtifactPaths: {
+    summaryRaw: string;
+    indicesRaw: string;
+    classificationRaw: string;
+    summaryNormalized: string;
+    indicesNormalized: string;
+    classificationNormalized: string;
+    importReport: string;
+  };
+  summaryRows: ParsedCseGicsSummaryRow[];
+  industryGroups: ParsedCseGicsIndustryGroupRow[];
+  indexRows: ParsedCseGicsIndexRow[];
+  classificationRows: ParsedCseGicsClassificationRow[];
+  groupsAttempted: number;
+  groupsSuccessful: number;
+  groupsFailed: number;
+  groupFailures: Array<{ industryGroupName: string; error: string }>;
+  recordsBeforeDeduplication: number;
+  recordsDeduplicated: number;
+  duplicateSymbols: string[];
+  validationReport: CseGicsValidationReport;
+}
+
+export interface CseGicsPromotionResult {
+  industryGroupsCreated: number;
+  industryGroupsUpdated: number;
+  summariesCreated: number;
+  summariesUpdated: number;
+  indicesCreated: number;
+  indicesUpdated: number;
+  classificationsCreated: number;
+  classificationsUpdated: number;
+  classificationSnapshotsCreated: number;
+  classificationSnapshotsUpdated: number;
+  unmappedSymbols: string[];
+  warnings: string[];
+}

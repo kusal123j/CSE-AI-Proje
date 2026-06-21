@@ -9,6 +9,7 @@ cseRoutes.get('/summary', cseImportReadAccessGuard, asyncHandler(cseController.s
 cseRoutes.get('/import/config', cseImportReadAccessGuard, asyncHandler(cseController.importConfig));
 cseRoutes.post('/import/alphabetical/run', cseImportAccessGuard, asyncHandler(cseController.runImport));
 cseRoutes.post('/import/trade-summary/run', cseImportAccessGuard, asyncHandler(cseController.runTradeSummaryImport));
+cseRoutes.post('/import/gics/run', cseImportAccessGuard, asyncHandler(cseController.runGicsImport));
 cseRoutes.post('/import/run', cseImportAccessGuard, asyncHandler(cseController.runImport));
 cseRoutes.get('/import/runs', cseImportReadAccessGuard, asyncHandler(cseController.listFetchRuns));
 cseRoutes.get('/import/runs/:id/raw-summary', cseImportReadAccessGuard, asyncHandler(cseController.rawRunSummary));
@@ -27,3 +28,11 @@ cseRoutes.get('/market/top-trade-volume', asyncHandler(cseController.topTradeVol
 cseRoutes.get('/market/top-share-volume', asyncHandler(cseController.topShareVolume));
 cseRoutes.get('/market/watch-list-movers', asyncHandler(cseController.watchListMovers));
 cseRoutes.get('/market/breadth', asyncHandler(cseController.marketBreadth));
+
+// CSE GICS industry intelligence endpoints
+cseRoutes.get('/gics/dashboard', cseImportReadAccessGuard, asyncHandler(cseController.gicsDashboard));
+cseRoutes.get('/gics/groups', cseImportReadAccessGuard, asyncHandler(cseController.listGicsGroups));
+cseRoutes.get('/gics/summary', cseImportReadAccessGuard, asyncHandler(cseController.listGicsSummary));
+cseRoutes.get('/gics/indices', cseImportReadAccessGuard, asyncHandler(cseController.listGicsIndices));
+cseRoutes.get('/gics/classifications', cseImportReadAccessGuard, asyncHandler(cseController.listGicsClassifications));
+cseRoutes.get('/gics/unmapped', cseImportReadAccessGuard, asyncHandler(cseController.listGicsUnmapped));

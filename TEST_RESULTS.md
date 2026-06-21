@@ -1,26 +1,75 @@
-# TEST RESULTS
+# Test Results — Corrected CSE GICS Import Package
 
-Commands run from the corrected full-project package.
+## Python worker
 
-```bash
-cd apps/backend
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cse_ai_test npm test
-npm run build
-```
-Result: 36 backend tests passed; backend TypeScript build passed.
+Command:
 
 ```bash
 cd apps/python-worker
-PYTHONPATH=. pytest -q
+pytest -q
+python -m compileall app
 ```
-Result: 18 Python worker tests passed.
+
+Result:
+
+- `pytest -q`: PASS — 28 passed
+- `python -m compileall app`: PASS
+- New GICS parser fixture tests: PASS — Summary 20 rows, group mapping 20 groups, Indices 20 rows, Classification visible Energy rows 3 rows.
+
+## Backend
+
+Setup command used because the backend env parser requires test env variables:
+
+```bash
+cd apps/backend
+DATABASE_URL=postgresql://user:pass@localhost:5432/db \
+JWT_SECRET=test-secret \
+MINIO_ENDPOINT=localhost \
+MINIO_ACCESS_KEY=x \
+MINIO_SECRET_KEY=y \
+QDRANT_URL=http://localhost:6333 \
+REDIS_URL=redis://localhost:6379 \
+npm test
+
+DATABASE_URL=postgresql://user:pass@localhost:5432/db \
+JWT_SECRET=test-secret \
+MINIO_ENDPOINT=localhost \
+MINIO_ACCESS_KEY=x \
+MINIO_SECRET_KEY=y \
+QDRANT_URL=http://localhost:6333 \
+REDIS_URL=redis://localhost:6379 \
+npm run build
+```
+
+Result:
+
+- `npm test`: PASS — 41 passed
+- `npm run build`: PASS
+
+## Mega Panel
+
+Command:
 
 ```bash
 cd apps/mega-panel
 npm test
-npm run typecheck
 npm run build
 ```
-Result: 13 Mega Panel tests passed; typecheck passed; production build passed. Next.js showed a non-blocking existing Turbopack tracing warning.
 
-Dependency check: no new Playwright/Chromium browser automation dependency was added for CSE import. Existing lockfile strings from transitive tooling are not used by the importer.
+Result:
+
+- `npm test`: PASS — 13 passed
+- `npm run build`: PASS
+- Build warning: Next.js workspace-root/NFT tracing warning from existing workspace layout; build completed successfully.
+
+## Docker
+
+Command attempted:
+
+```bash
+docker compose -f infra/docker-compose.yml config
+```
+
+Result:
+
+- NOT RUN in this sandbox because Docker is not installed (`docker: command not found`).

@@ -39,6 +39,21 @@ class Settings:
     )
     cse_trade_summary_csv_url: str = os.getenv("CSE_TRADE_SUMMARY_CSV_URL", "")
     cse_trade_summary_min_expected_rows: int = int(os.getenv("CSE_TRADE_SUMMARY_MIN_EXPECTED_ROWS", "100"))
+    cse_gics_summary_source_url: str = os.getenv(
+        "CSE_GICS_SUMMARY_SOURCE_URL",
+        "https://www.cse.lk/equity/gics-industry-group-summary",
+    )
+    cse_gics_indices_source_url: str = os.getenv(
+        "CSE_GICS_INDICES_SOURCE_URL",
+        "https://www.cse.lk/equity/gics-industry-group-indices",
+    )
+    cse_gics_classification_source_url: str = os.getenv(
+        "CSE_GICS_CLASSIFICATION_SOURCE_URL",
+        "https://www.cse.lk/listed-entities/gics-classification",
+    )
+    cse_gics_timeout_seconds: int = int(os.getenv("CSE_GICS_TIMEOUT_SECONDS", "120"))
+    cse_gics_min_expected_groups: int = int(os.getenv("CSE_GICS_MIN_EXPECTED_GROUPS", "20"))
+    cse_gics_min_expected_classification_rows: int = int(os.getenv("CSE_GICS_MIN_EXPECTED_CLASSIFICATION_ROWS", "250"))
 
     @property
     def minio_host(self) -> str:

@@ -49,6 +49,7 @@ export interface CseImportConfig {
   artifactStorageDir?: string;
   staleAfterHours?: number;
   lastSuccessfulImportAt?: string | null;
+  gics?: CseGicsImportConfig;
   tradeSummary?: {
     enabled: boolean;
     source: string;
@@ -190,4 +191,81 @@ export interface CseFreshnessMeta {
 export interface CseDataResponse<T> {
   data: T;
   meta: CseFreshnessMeta;
+}
+
+export interface CseGicsImportConfig {
+  enabled: boolean;
+  source: string;
+  summaryUrl: string;
+  indicesUrl: string;
+  classificationUrl: string;
+  fetchMode: string;
+  csvDownloadPreferred: boolean;
+  htmlFallbackEnabled: boolean;
+  browserAutomationEnabled: boolean;
+  playwrightEnabled: boolean;
+  schedulerEnabled: boolean;
+  minExpectedGroups: number;
+  minExpectedClassificationRows: number;
+  timeoutSeconds?: number;
+  artifactStorageDir?: string;
+}
+
+export interface CseGicsDashboard {
+  groupCount: number;
+  classificationCount: number;
+  unmappedCount: number;
+  latestSummaryDate: string | null;
+  latestIndexDate: string | null;
+}
+
+export interface CseGicsGroup {
+  id: string;
+  industry_group_code: string;
+  gics_code: string;
+  symbol: string;
+  industry_group_name: string;
+  is_active?: boolean;
+}
+
+export interface CseGicsSummaryRow {
+  industry_group_name?: string | null;
+  industry_group_code: string;
+  gics_code?: string | null;
+  index_code?: string | null;
+  trading_date?: string | null;
+  index_value?: number | string | null;
+  turnover_value?: number | string | null;
+  turnover_volume?: number | string | null;
+  trade_volume?: number | string | null;
+  per?: number | string | null;
+  pbv?: number | string | null;
+  dy?: number | string | null;
+  companies_traded?: number | string | null;
+  companies_listed?: number | string | null;
+}
+
+export interface CseGicsIndexRow {
+  industry_group_name: string;
+  index_code: string;
+  gics_code?: string | null;
+  trading_date?: string | null;
+  today_index?: number | string | null;
+  previous_index?: number | string | null;
+  index_change?: number | string | null;
+  index_change_percent?: number | string | null;
+  turnover_value?: number | string | null;
+  turnover_volume?: number | string | null;
+  trades?: number | string | null;
+}
+
+export interface CseGicsClassificationRow {
+  company_name: string;
+  symbol: string;
+  normalized_symbol: string;
+  industry_group_name: string;
+  industry_group_code?: string | null;
+  gics_code?: string | null;
+  is_mapped?: boolean;
+  last_seen_at?: string | null;
 }

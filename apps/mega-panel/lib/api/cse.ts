@@ -5,6 +5,11 @@ import type {
   CseDailySnapshot,
   CseDataResponse,
   CseFetchRun,
+  CseGicsClassificationRow,
+  CseGicsDashboard,
+  CseGicsGroup,
+  CseGicsIndexRow,
+  CseGicsSummaryRow,
   CseImportConfig,
   CseMarketBreadthSummary,
   CseMarketRankingItem,
@@ -43,6 +48,13 @@ export function runCseImport(input?: { tradingDate?: string }) {
 
 export function runTradeSummaryImport(input?: { tradingDate?: string }) {
   return panelFetch<unknown>('/api/cse/import/trade-summary/run', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {})
+  });
+}
+
+export function runGicsImport(input?: { tradingDate?: string }) {
+  return panelFetch<unknown>('/api/cse/import/gics/run', {
     method: 'POST',
     body: JSON.stringify(input ?? {})
   });
@@ -98,4 +110,24 @@ export function getWatchListMovers(params?: ListParams) {
 
 export function getMarketBreadth(params?: Pick<ListParams, 'date'>) {
   return apiFetch<CseMarketBreadthSummary | CseDataResponse<CseMarketBreadthSummary>>(`market/breadth${toQueryString(params)}`).then((response) => ('data' in response ? response.data : response));
+}
+
+export function getGicsDashboard() {
+  return apiFetch<CseGicsDashboard>('gics/dashboard');
+}
+
+export function getGicsGroups() {
+  return apiFetch<CseGicsGroup[]>('gics/groups');
+}
+
+export function getGicsSummary(params?: Pick<ListParams, 'limit'>) {
+  return apiFetch<CseGicsSummaryRow[]>(`gics/summary${toQueryString(params)}`);
+}
+
+export function getGicsIndices(params?: Pick<ListParams, 'limit'>) {
+  return apiFetch<CseGicsIndexRow[]>(`gics/indices${toQueryString(params)}`);
+}
+
+export function getGicsClassifications(params?: Pick<ListParams, 'limit' | 'search'>) {
+  return apiFetch<CseGicsClassificationRow[]>(`gics/classifications${toQueryString(params)}`);
 }

@@ -1,2 +1,1 @@
-docs/A_Z_BROWSER_DOWNLOAD_FETCHER_NOTES.md
-docs/PACKAGE_FILE_MANIFEST_BROWSER_AZ.txt
+No files need to be deleted for this corrected package.

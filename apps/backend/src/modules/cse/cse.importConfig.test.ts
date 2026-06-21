@@ -16,3 +16,17 @@ test('import config reports Python HTTP mode and disables browser automation/fal
   assert.match(source, /fallbackEnabled:\s*false/);
   assert.doesNotMatch(source, /browserAutomationOnly:\s*true/);
 });
+
+test('import config includes separate GICS importer without browser automation', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, 'cse.service.ts'), 'utf8');
+
+  assert.match(source, /gics:\s*{/);
+  assert.match(source, /source:\s*['"]CSE_GICS['"]/);
+  assert.match(source, /summaryUrl:\s*env\.CSE_GICS_SUMMARY_SOURCE_URL/);
+  assert.match(source, /indicesUrl:\s*env\.CSE_GICS_INDICES_SOURCE_URL/);
+  assert.match(source, /classificationUrl:\s*env\.CSE_GICS_CLASSIFICATION_SOURCE_URL/);
+  assert.match(source, /csvDownloadPreferred:\s*true/);
+  assert.match(source, /htmlFallbackEnabled:\s*true/);
+  assert.match(source, /browserAutomationEnabled:\s*false/);
+  assert.match(source, /playwrightEnabled:\s*false/);
+});

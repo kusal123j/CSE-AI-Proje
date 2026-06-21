@@ -41,3 +41,30 @@ export function assertAlphabeticalSourceUrl(sourceUrl: string): void {
     }
   }
 }
+
+function assertCsePath(sourceUrl: string, expectedPath: string, label: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(sourceUrl);
+  } catch {
+    throw new AppError(400, `Invalid ${label} source URL`);
+  }
+  if (parsed.hostname !== 'www.cse.lk' && parsed.hostname !== 'cse.lk') {
+    throw new AppError(400, `Only cse.lk source URLs are allowed for ${label}`);
+  }
+  if (!parsed.pathname.includes(expectedPath)) {
+    throw new AppError(400, `Only the CSE ${expectedPath} source path is allowed for ${label}`);
+  }
+}
+
+export function assertGicsSummarySourceUrl(sourceUrl: string): void {
+  assertCsePath(sourceUrl, '/equity/gics-industry-group-summary', 'GICS Summary importer');
+}
+
+export function assertGicsIndicesSourceUrl(sourceUrl: string): void {
+  assertCsePath(sourceUrl, '/equity/gics-industry-group-indices', 'GICS Indices importer');
+}
+
+export function assertGicsClassificationSourceUrl(sourceUrl: string): void {
+  assertCsePath(sourceUrl, '/listed-entities/gics-classification', 'GICS Classification importer');
+}

@@ -9,6 +9,7 @@ from .db_client import update_document_status, save_processing_log, upsert_docum
 from .config import settings
 from .cse_http_importer import CseImportError, run_http_import
 from .cse_trade_summary_importer import run_trade_summary_import
+from .cse_gics_importer import run_gics_import
 
 app = FastAPI(title="CSE Python Worker", version="0.2.0")
 
@@ -73,6 +74,40 @@ def cse_import_trade_summary(payload: CseImportRequest):
                 "errorCode": exc.__class__.__name__,
                 "message": str(exc),
                 "sourceUrl": source_url,
+                "runId": payload.run_id,
+            },
+        ) from exc
+
+
+class CseGicsImportRequest(BaseModel):
+    run_id: str | None = Field(default=None, alias="runId")
+    trading_date: str | None = Field(default=None, alias="tradingDate")
+    summary_url: str | None = Field(default=None, alias="summaryUrl")
+    indices_url: str | None = Field(default=None, alias="indicesUrl")
+    classification_url: str | None = Field(default=None, alias="classificationUrl")
+
+    class Config:
+        populate_by_name = True
+
+
+@app.post("/cse/import/gics")
+def cse_import_gics(payload: CseGicsImportRequest):
+    summary_url = payload.summary_url or settings.cse_gics_summary_source_url
+    indices_url = payload.indices_url or settings.cse_gics_indices_source_url
+    classification_url = payload.classification_url or settings.cse_gics_classification_source_url
+    try:
+        result = run_gics_import(summary_url, indices_url, classification_url)
+        result["runId"] = payload.run_id
+        result["tradingDate"] = payload.trading_date
+        return result
+    except CseImportError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "status": "failed",
+                "errorCode": exc.__class__.__name__,
+                "message": str(exc),
+                "sourceUrl": classification_url,
                 "runId": payload.run_id,
             },
         ) from exc
