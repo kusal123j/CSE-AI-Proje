@@ -1,0 +1,133 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from .logger import logger
+from .minio_client import download_object
+from .pdf_extractor import extract_pdf_pages, PdfExtractionError
+from .db_client import update_document_status, save_processing_log, upsert_document_page
+from .config import settings
+from .cse_http_importer import CseImportError, run_http_import
+
+app = FastAPI(title="CSE Python Worker", version="0.2.0")
+
+
+class ExtractPdfRequest(BaseModel):
+    document_id: str = Field(alias="documentId")
+    bucket: str
+    object_key: str = Field(alias="objectKey")
+
+    class Config:
+        populate_by_name = True
+
+
+class CseImportRequest(BaseModel):
+    source_url: str | None = Field(default=None, alias="sourceUrl")
+    run_id: str | None = Field(default=None, alias="runId")
+    trading_date: str | None = Field(default=None, alias="tradingDate")
+
+    class Config:
+        populate_by_name = True
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "cse-python-worker"}
+
+
+@app.post("/cse/import/alphabetical")
+def cse_import_alphabetical(payload: CseImportRequest):
+    source_url = payload.source_url or settings.cse_listed_company_directory_url
+    try:
+        result = run_http_import(source_url)
+        result["runId"] = payload.run_id
+        result["tradingDate"] = payload.trading_date
+        return result
+    except CseImportError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "status": "failed",
+                "errorCode": exc.__class__.__name__,
+                "message": str(exc),
+                "sourceUrl": source_url,
+                "runId": payload.run_id,
+            },
+        ) from exc
+
+
+@app.post("/extract-pdf")
+def extract_pdf(payload: ExtractPdfRequest):
+    document_id = payload.document_id
+    try:
+        update_document_status(document_id, "EXTRACTING")
+        save_processing_log(
+            document_id,
+            "INFO",
+            "Python worker started PDF extraction",
+            {"bucket": payload.bucket, "objectKey": payload.object_key},
+        )
+
+        with TemporaryDirectory() as tmp_dir:
+            pdf_path = Path(tmp_dir) / "source.pdf"
+            download_object(payload.bucket, payload.object_key, pdf_path)
+            pages, method, diagnostics = extract_pdf_pages(pdf_path)
+
+            total_words = 0
+            for page in pages:
+                text = page.get("text") or ""
+                total_words += len(text.split())
+                upsert_document_page(
+                    document_id=document_id,
+                    page_number=page["page_number"],
+                    text=text,
+                    extraction_method=page.get("method") or method,
+                )
+
+        if diagnostics.get("warnings"):
+            save_processing_log(
+                document_id,
+                "WARN",
+                "PDF extraction completed with warnings",
+                {"warnings": diagnostics.get("warnings"), "method": method},
+            )
+
+        update_document_status(document_id, "EXTRACTED")
+        save_processing_log(
+            document_id,
+            "INFO",
+            "Python worker completed PDF extraction",
+            {"pagesExtracted": len(pages), "totalWords": total_words, "method": method, "diagnostics": diagnostics},
+        )
+
+        return {
+            "documentId": document_id,
+            "status": "EXTRACTED",
+            "pagesExtracted": len(pages),
+            "totalWords": total_words,
+            "method": method,
+            "diagnostics": diagnostics,
+        }
+    except Exception as exc:
+        logger.exception("PDF extraction failed")
+        error_code = exc.error_code if isinstance(exc, PdfExtractionError) else "PDF_EXTRACTION_FAILED"
+        message = str(exc)
+        try:
+            update_document_status(document_id, "FAILED", message)
+            save_processing_log(
+                document_id,
+                "ERROR",
+                "Python worker PDF extraction failed",
+                {"errorCode": error_code, "error": message},
+            )
+        except Exception:
+            logger.exception("Failed to save extraction error status/log")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "FAILED",
+                "errorCode": error_code,
+                "message": message,
+                "documentId": document_id,
+            },
+        ) from exc

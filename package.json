@@ -1,0 +1,27 @@
+{
+  "name": "cse-ai-research-assistant",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Backend-first foundation for the CSE AI Research Assistant SaaS project.",
+  "scripts": {
+    "dev:backend": "npm --prefix apps/backend run dev",
+    "build:backend": "npm --prefix apps/backend run build",
+    "db:migrate": "npm --prefix apps/backend run db:migrate",
+    "docker:up": "docker compose -f infra/docker-compose.yml up --build",
+    "docker:down": "docker compose -f infra/docker-compose.yml down",
+    "docker:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "test:backend": "npm --prefix apps/backend test",
+    "test:python": "python -m pytest apps/python-worker/tests",
+    "dev:mega-panel": "npm --prefix apps/mega-panel run dev",
+    "build:mega-panel": "npm --prefix apps/mega-panel run build",
+    "typecheck:mega-panel": "npm --prefix apps/mega-panel run typecheck",
+    "test:mega-panel": "npm --prefix apps/mega-panel run test"
+  },
+  "workspaces": [
+    "apps/backend",
+    "apps/mega-panel"
+  ],
+  "dependencies": {
+    "@langchain/textsplitters": "^1.0.1"
+  }
+}

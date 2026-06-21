@@ -1,0 +1,93 @@
+import { Request, Response } from 'express';
+import { ok } from '../../utils/apiResponse';
+import { AppError } from '../../middleware/errorHandler';
+import { cseService } from './cse.service';
+import { cseAnalyticsService } from './cse.analytics.service';
+import { findFetchRun, listFetchRuns } from './cse.repository';
+
+function page(req: Request) {
+  return req.query.page ? Number(req.query.page) : undefined;
+}
+
+function limit(req: Request) {
+  return req.query.limit ? Number(req.query.limit) : undefined;
+}
+
+export const cseController = {
+  async runImport(req: Request, res: Response) {
+    const tradingDate = typeof req.body?.tradingDate === 'string' ? req.body.tradingDate : undefined;
+    return ok(res, await cseService.runAlphabeticalImport({ tradingDate }), 202);
+  },
+
+  async summary(_req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.getDashboardSummary());
+  },
+
+  async importConfig(_req: Request, res: Response) {
+    return ok(res, await cseService.importConfig());
+  },
+
+  async listFetchRuns(req: Request, res: Response) {
+    return ok(res, await listFetchRuns(limit(req)));
+  },
+
+  async getFetchRun(req: Request, res: Response) {
+    const run = await findFetchRun(req.params.id);
+    if (!run) throw new AppError(404, 'CSE fetch run not found');
+    return ok(res, run);
+  },
+
+  async rawRunSummary(req: Request, res: Response) {
+    return ok(res, await cseService.rawRunSummary(req.params.id));
+  },
+
+  async latestDate(_req: Request, res: Response) {
+    return ok(res, { tradingDate: await cseAnalyticsService.latestTradingDate() });
+  },
+
+  async listCompanies(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.listCompanies({ page: page(req), limit: limit(req), search: String(req.query.search ?? '') }));
+  },
+
+  async listSecurities(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.listSecurities({ page: page(req), limit: limit(req), search: String(req.query.search ?? '') }));
+  },
+
+  async listDaily(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseAnalyticsService.listDaily({
+        date: typeof req.query.date === 'string' ? req.query.date : undefined,
+        page: page(req),
+        limit: limit(req),
+        search: String(req.query.search ?? '')
+      })
+    );
+  },
+
+  async getBySymbol(req: Request, res: Response) {
+    const row = await cseAnalyticsService.getBySymbol(req.params.symbol, typeof req.query.date === 'string' ? req.query.date : undefined);
+    if (!row) throw new AppError(404, 'CSE daily market snapshot not found');
+    return ok(res, row);
+  },
+
+  async gainers(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.rank({ type: 'gainers', date: String(req.query.date || ''), page: page(req), limit: limit(req) }));
+  },
+
+  async losers(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.rank({ type: 'losers', date: String(req.query.date || ''), page: page(req), limit: limit(req) }));
+  },
+
+  async topTurnover(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.rank({ type: 'topTurnover', date: String(req.query.date || ''), page: page(req), limit: limit(req) }));
+  },
+
+  async topTradeVolume(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.rank({ type: 'topTradeVolume', date: String(req.query.date || ''), page: page(req), limit: limit(req) }));
+  },
+
+  async topShareVolume(req: Request, res: Response) {
+    return ok(res, await cseAnalyticsService.rank({ type: 'topShareVolume', date: String(req.query.date || ''), page: page(req), limit: limit(req) }));
+  }
+};

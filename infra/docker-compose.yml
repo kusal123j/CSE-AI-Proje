@@ -1,0 +1,181 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cse_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cse_password}
+      POSTGRES_DB: ${POSTGRES_DB:-cse_research}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cse_user} -d ${POSTGRES_DB:-cse_research}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cse-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: cse-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: cse-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  python-worker:
+    build:
+      context: ../apps/python-worker
+      dockerfile: Dockerfile
+    container_name: cse-python-worker
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHON_WORKER_PORT: ${PYTHON_WORKER_PORT:-8000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://cse_user:cse_password@postgres:5432/cse_research}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MAX_PDF_SIZE_MB: ${MAX_PDF_SIZE_MB:-100}
+      CSE_IMPORT_MODE: ${CSE_IMPORT_MODE:-python-http}
+      CSE_IMPORT_FETCH_MODE: ${CSE_IMPORT_FETCH_MODE:-python-http}
+      CSE_IMPORT_SOURCE_URL: ${CSE_IMPORT_SOURCE_URL:-https://www.cse.lk/listed-entities/listed-company-directory?page=ALPHABETICAL}
+      CSE_LISTED_COMPANY_DIRECTORY_URL: ${CSE_LISTED_COMPANY_DIRECTORY_URL:-https://www.cse.lk/listed-entities/listed-company-directory?page=ALPHABETICAL}
+      CSE_IMPORT_TIMEOUT_SECONDS: ${CSE_IMPORT_TIMEOUT_SECONDS:-30}
+      CSE_IMPORT_MAX_RETRIES: ${CSE_IMPORT_MAX_RETRIES:-3}
+      CSE_IMPORT_USER_AGENT: ${CSE_IMPORT_USER_AGENT:-Mozilla/5.0 compatible CSE Research Assistant Importer}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../apps/python-worker:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ../apps/backend
+      dockerfile: Dockerfile
+    container_name: cse-backend
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      PORT: ${PORT:-5000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://cse_user:cse_password@postgres:5432/cse_research}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      PYTHON_WORKER_URL: ${PYTHON_WORKER_URL:-http://python-worker:8000}
+      MAX_PDF_SIZE_MB: ${MAX_PDF_SIZE_MB:-100}
+      PDF_DOWNLOAD_TIMEOUT_MS: ${PDF_DOWNLOAD_TIMEOUT_MS:-60000}
+      CSE_IMPORT_FETCH_MODE: ${CSE_IMPORT_FETCH_MODE:-python-http}
+      CSE_IMPORT_SOURCE_URL: ${CSE_IMPORT_SOURCE_URL:-https://www.cse.lk/listed-entities/listed-company-directory?page=ALPHABETICAL}
+      CSE_IMPORT_TIMEOUT_SECONDS: ${CSE_IMPORT_TIMEOUT_SECONDS:-30}
+      CSE_IMPORT_MAX_RETRIES: ${CSE_IMPORT_MAX_RETRIES:-3}
+      CSE_IMPORT_USER_AGENT: ${CSE_IMPORT_USER_AGENT:-Mozilla/5.0 compatible CSE Research Assistant Importer}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../apps/backend:/app
+      - /app/node_modules
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      python-worker:
+        condition: service_healthy
+    command: npm run dev
+
+  mega-panel:
+    build:
+      context: ..
+      dockerfile: apps/mega-panel/Dockerfile
+    container_name: cse-mega-panel
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+      CSE_BACKEND_API_URL: ${CSE_BACKEND_API_URL:-http://backend:5000}
+      NEXT_PUBLIC_MEGA_PANEL_NAME: ${NEXT_PUBLIC_MEGA_PANEL_NAME:-CSE Mega Control Panel}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ../apps/mega-panel:/app/apps/mega-panel
+      - /app/apps/mega-panel/node_modules
+      - /app/apps/mega-panel/.next
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: sh -c "if [ ! -x node_modules/.bin/next ]; then npm install --ignore-scripts; fi; npm run dev"
+
+volumes:
+  postgres_data:
+  minio_data:
+  qdrant_data:

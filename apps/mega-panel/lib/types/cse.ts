@@ -1,0 +1,120 @@
+export type CseFetchRunStatus = 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'RUNNING' | string;
+export type CseSystemStatus = 'Healthy' | 'Warning' | 'Failed' | 'Unknown';
+export type LetterStatus = 'Pending' | 'Downloading' | 'Downloaded' | 'Parsed' | 'Failed' | 'Skipped' | 'Unknown';
+
+export interface CseFetchRun {
+  id: string;
+  source?: string;
+  source_url?: string;
+  fetch_mode?: string;
+  status: CseFetchRunStatus;
+  started_at?: string | null;
+  finished_at?: string | null;
+  records_found?: number | null;
+  companies_created?: number | null;
+  companies_updated?: number | null;
+  securities_created?: number | null;
+  securities_updated?: number | null;
+  snapshots_created?: number | null;
+  snapshots_updated?: number | null;
+  records_failed?: number | null;
+  error_message?: string | null;
+  warnings_json?: string[] | string | null;
+  raw_file_path?: string | null;
+  letters_attempted?: number | null;
+  letters_successful?: number | null;
+  letters_failed?: number | null;
+  records_before_deduplication?: number | null;
+  records_deduplicated?: number | null;
+  created_at?: string | null;
+}
+
+export interface CseImportConfig {
+  mode: 'python-http' | string;
+  schedulerEnabled: boolean;
+  realTimeProgressAvailable: boolean;
+  weekdaysOnly?: boolean;
+  scheduledHour?: number;
+  scheduledMinute?: number;
+  requiredLetters?: string[];
+}
+
+export interface CseRawRunSummary {
+  runId: string;
+  available: boolean;
+  rawFilePath?: string | null;
+  files?: Array<{
+    name: string;
+    path: string;
+    extension?: string;
+    sizeBytes?: number;
+    modifiedAt?: string;
+    letter?: string | null;
+    type?: string;
+  }>;
+  mergedNormalizedJsonPath?: string | null;
+  warnings?: string[];
+  parseErrors?: string[];
+  failedRows?: unknown[];
+  reason?: string;
+}
+
+export interface CseCompany {
+  id: string;
+  name: string;
+  normalized_name?: string;
+  profile_url?: string | null;
+  logo_url?: string | null;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  is_active?: boolean;
+  security_count?: number | string | null;
+}
+
+export interface CseSecurity {
+  id: string;
+  company_id?: string;
+  symbol: string;
+  normalized_symbol?: string;
+  company_name?: string | null;
+  logo_url?: string | null;
+  profile_url?: string | null;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  is_active?: boolean;
+  latest_snapshot_date?: string | null;
+  last_traded_price?: number | string | null;
+  trade_volume?: number | string | null;
+  share_volume?: number | string | null;
+  turnover?: number | string | null;
+  change_amount?: number | string | null;
+  change_percent?: number | string | null;
+}
+
+export interface CseDailySnapshot {
+  id: string;
+  security_id?: string;
+  symbol: string;
+  trading_date?: string;
+  company_name?: string | null;
+  logo_url?: string | null;
+  profile_url?: string | null;
+  last_traded_price?: number | string | null;
+  trade_volume?: number | string | null;
+  share_volume?: number | string | null;
+  turnover?: number | string | null;
+  change_amount?: number | string | null;
+  change_percent?: number | string | null;
+  source_page?: string | null;
+  source_letter?: string | null;
+  raw_row?: Record<string, unknown> | null;
+  fetched_at?: string | null;
+}
+
+export type CseMarketRankingItem = CseDailySnapshot;
+
+export interface AzLetterProgress {
+  letter: string;
+  status: LetterStatus;
+  message?: string;
+}
