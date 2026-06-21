@@ -1,35 +1,32 @@
-# Implementation Summary — Browser A-Z CSE ALPHABETICAL Importer
+# Implementation Summary — HTTP/API A-Z CSE ALPHABETICAL Importer
 
 ## Scope
 
-This update implements the CSE ALPHABETICAL market-universe importer for the real TypeScript/PostgreSQL backend structure.
+This update implements the CSE ALPHABETICAL market-universe importer for the TypeScript/PostgreSQL backend using a lightweight backend/Python HTTP/API workflow.
+
+## Current rules
+
+- No Playwright.
+- No Chromium.
+- No real browser automation.
+- No full-export-first strategy.
+- Fetch ALPHABETICAL data one letter at a time from A to Z.
+- Deduplicate by symbol/security, not company name.
+- Write candidate data to import-run scoped staging tables.
+- Validate before promotion.
+- Keep previous successful live data if the new import fails.
 
 ## Main changes
 
-- Replaced direct HTTP/HTML/CSV fetch strategy with Playwright browser automation.
-- Added A-Z letter loop using actual page buttons.
-- Added browser Download button handling.
-- Added raw per-letter file storage.
-- Added CSV/Excel export parsing support.
-- Added merge/deduplicate logic by symbol.
-- Preserved PostgreSQL upsert flow for company/security/snapshot tables.
-- Added fetch-run metadata for letters and deduplication counts.
-- Kept scheduler disabled by default.
-- Kept manual import protected by `x-cse-import-secret`.
-
-## Files added or updated
-
-- `apps/backend/src/modules/cse/cse.browserAzFetcher.ts`
-- `apps/backend/src/modules/cse/cse.exportParser.ts`
-- `apps/backend/src/modules/cse/cse.fetcher.ts`
-- `apps/backend/src/modules/cse/cse.service.ts`
-- `apps/backend/src/modules/cse/cse.repository.ts`
-- `apps/backend/src/modules/cse/cse.types.ts`
-- `apps/backend/src/config/env.ts`
-- `apps/backend/src/database/schema.sql`
-- `apps/backend/package.json`
-- `package-lock.json`
-- CSE tests and docs
+- Added non-blocking manual import start: `POST /api/cse/import/run` returns a run ID immediately.
+- Added separated job timeout and per-letter timeout settings.
+- Added per-letter retry tracking in the Python HTTP importer.
+- Added raw per-letter JSON artifact storage.
+- Added import-run staging tables for companies, securities, and market snapshots.
+- Promotes staged rows into live tables only after validation passes.
+- Added freshness metadata to CSE data APIs.
+- Kept scheduler disabled by default but ready for daily scheduled imports.
+- Kept manual import protected by `x-cse-import-secret` unless explicitly opened by env.
 
 ## Not touched
 
@@ -37,6 +34,5 @@ This update implements the CSE ALPHABETICAL market-universe importer for the rea
 - Qdrant code
 - annual-report pipeline
 - payments
-- frontend
-- Docker files
+- authentication
 - unrelated backend modules

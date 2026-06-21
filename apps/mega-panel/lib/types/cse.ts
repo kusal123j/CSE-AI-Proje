@@ -27,6 +27,12 @@ export interface CseFetchRun {
   records_before_deduplication?: number | null;
   records_deduplicated?: number | null;
   created_at?: string | null;
+  validation_report?: {
+    letterResults?: Array<{ letter: string; status: string; rowCount?: number; attempts?: number | null; error?: string | null }>;
+    failedLetters?: Array<{ letter: string; error: string; attempts?: number }>;
+    emptyLetters?: string[];
+    errors?: string[];
+  } | null;
 }
 
 export interface CseImportConfig {
@@ -37,6 +43,12 @@ export interface CseImportConfig {
   scheduledHour?: number;
   scheduledMinute?: number;
   requiredLetters?: string[];
+  jobTimeoutSeconds?: number;
+  letterTimeoutSeconds?: number;
+  maxRetries?: number;
+  artifactStorageDir?: string;
+  staleAfterHours?: number;
+  lastSuccessfulImportAt?: string | null;
 }
 
 export interface CseRawRunSummary {
@@ -56,6 +68,8 @@ export interface CseRawRunSummary {
   warnings?: string[];
   parseErrors?: string[];
   failedRows?: unknown[];
+  dbArtifacts?: Array<{ letter?: string | null; artifact_type?: string; row_count?: number | null; file_path?: string; checksum?: string | null }>;
+  validationReport?: CseFetchRun['validation_report'];
   reason?: string;
 }
 
@@ -117,4 +131,20 @@ export interface AzLetterProgress {
   letter: string;
   status: LetterStatus;
   message?: string;
+}
+
+
+export interface CseFreshnessMeta {
+  lastImportedAt: string | null;
+  lastSuccessfulImportId: string | null;
+  source: string;
+  sourceUrl: string;
+  mode: string;
+  isStale: boolean;
+  staleAfterHours: number;
+}
+
+export interface CseDataResponse<T> {
+  data: T;
+  meta: CseFreshnessMeta;
 }

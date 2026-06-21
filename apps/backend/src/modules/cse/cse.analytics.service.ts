@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { query } from '../../config/database';
 
 export interface MarketQueryOptions {
@@ -17,6 +18,27 @@ async function resolveDate(date?: string): Promise<string | null> {
   if (date) return date;
   const result = await query(`SELECT MAX(trading_date)::text AS trading_date FROM cse_daily_market_snapshots`);
   return result.rows[0]?.trading_date ?? null;
+}
+
+
+async function freshnessMeta() {
+  const result = await query(`SELECT id, finished_at FROM cse_fetch_runs WHERE status = 'SUCCESS' ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1`);
+  const row = result.rows[0] ?? null;
+  const finishedAt = row?.finished_at ? new Date(row.finished_at) : null;
+  const isStale = !finishedAt || Date.now() - finishedAt.getTime() > env.CSE_IMPORT_STALE_AFTER_HOURS * 60 * 60 * 1000;
+  return {
+    lastImportedAt: finishedAt?.toISOString() ?? null,
+    lastSuccessfulImportId: row?.id ?? null,
+    source: 'CSE Listed Company Directory - ALPHABETICAL' as const,
+    sourceUrl: env.CSE_IMPORT_SOURCE_URL,
+    mode: env.CSE_IMPORT_FETCH_MODE,
+    isStale,
+    staleAfterHours: env.CSE_IMPORT_STALE_AFTER_HOURS
+  };
+}
+
+async function withFreshness<T>(data: T) {
+  return { data, meta: await freshnessMeta() };
 }
 
 function baseSnapshotSelect() {
@@ -104,7 +126,7 @@ export const cseAnalyticsService = {
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
-    return result.rows;
+    return withFreshness(result.rows);
   },
 
   async listSecurities(options: MarketQueryOptions = {}) {
@@ -144,12 +166,12 @@ export const cseAnalyticsService = {
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
-    return result.rows;
+    return withFreshness(result.rows);
   },
 
   async listDaily(options: MarketQueryOptions = {}) {
     const date = await resolveDate(options.date);
-    if (!date) return [];
+    if (!date) return withFreshness([]);
     const { limit, offset } = normalizePagination(options.page, options.limit);
     const params: unknown[] = [date];
     let where = `WHERE s.trading_date = $1::date`;
@@ -162,24 +184,24 @@ export const cseAnalyticsService = {
       `${baseSnapshotSelect()} ${where} ORDER BY s.symbol ASC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
-    return result.rows;
+    return withFreshness(result.rows);
   },
 
   async getBySymbol(symbol: string, date?: string) {
     const resolvedDate = await resolveDate(date);
-    if (!resolvedDate) return null;
+    if (!resolvedDate) return withFreshness(null);
     const result = await query(
       `${baseSnapshotSelect()}
        WHERE s.trading_date = $1::date AND s.symbol = $2
        LIMIT 1`,
       [resolvedDate, symbol.trim().toUpperCase()]
     );
-    return result.rows[0] ?? null;
+    return withFreshness(result.rows[0] ?? null);
   },
 
   async rank(options: MarketQueryOptions & { type: 'gainers' | 'losers' | 'topTurnover' | 'topTradeVolume' | 'topShareVolume' }) {
     const date = await resolveDate(options.date);
-    if (!date) return [];
+    if (!date) return withFreshness([]);
     const { limit, offset } = normalizePagination(options.page, options.limit ?? 25);
     const orderMap: Record<'gainers' | 'losers' | 'topTurnover' | 'topTradeVolume' | 'topShareVolume', string> = {
       gainers: `WHERE s.trading_date = $1::date AND (s.change_amount > 0 OR s.change_percent > 0) ORDER BY s.change_percent DESC NULLS LAST, s.change_amount DESC NULLS LAST`,
@@ -193,6 +215,6 @@ export const cseAnalyticsService = {
       `${baseSnapshotSelect()} ${orderMap[options.type]} LIMIT $2 OFFSET $3`,
       [date, limit, offset]
     );
-    return result.rows;
+    return withFreshness(result.rows);
   }
 };

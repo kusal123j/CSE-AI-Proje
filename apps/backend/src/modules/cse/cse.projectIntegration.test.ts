@@ -26,6 +26,7 @@ test('PostgreSQL schema includes CSE tables, uniqueness, ranking indexes, and im
   assert.match(schema, /CREATE TABLE IF NOT EXISTS cse_securities/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS cse_daily_market_snapshots/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS cse_fetch_runs/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS cse_import_artifacts/);
   assert.match(schema, /symbol VARCHAR\(30\) NOT NULL UNIQUE/);
   assert.match(schema, /CONSTRAINT cse_daily_market_symbol_date_unique UNIQUE \(symbol, trading_date\)/);
   assert.match(schema, /idx_cse_daily_market_change_percent/);
@@ -34,12 +35,14 @@ test('PostgreSQL schema includes CSE tables, uniqueness, ranking indexes, and im
   assert.match(schema, /idx_cse_daily_market_share_volume/);
   assert.match(schema, /letters_attempted INTEGER/);
   assert.match(schema, /records_deduplicated INTEGER/);
+  assert.match(schema, /validation_report JSONB/);
+  assert.match(schema, /trigger_type TEXT/);
 });
 
 test('repository uses idempotent ON CONFLICT upserts for company, security, and snapshot', () => {
   const repository = readProjectFile('modules/cse/cse.repository.ts');
   assert.match(repository, /ON CONFLICT \(normalized_name\)/);
-  assert.match(repository, /ON CONFLICT \(symbol\)/);
+  assert.match(repository, /ON CONFLICT \(normalized_symbol\)/);
   assert.match(repository, /ON CONFLICT \(symbol, trading_date\)/);
 });
 

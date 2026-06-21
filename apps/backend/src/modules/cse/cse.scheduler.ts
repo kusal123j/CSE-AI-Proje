@@ -38,7 +38,7 @@ export function startCseAlphabeticalScheduler(): { stop: () => void } | null {
     running = true;
     lastRunKey = runKey;
     cseService
-      .runAlphabeticalImport()
+      .runAlphabeticalImport({ triggerType: 'scheduled' })
       .then((result) => logger.info({ result }, 'Scheduled CSE ALPHABETICAL import completed'))
       .catch((error) => logger.error({ error }, 'Scheduled CSE ALPHABETICAL import failed'))
       .finally(() => {

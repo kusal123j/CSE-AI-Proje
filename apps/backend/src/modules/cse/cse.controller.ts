@@ -16,7 +16,7 @@ function limit(req: Request) {
 export const cseController = {
   async runImport(req: Request, res: Response) {
     const tradingDate = typeof req.body?.tradingDate === 'string' ? req.body.tradingDate : undefined;
-    return ok(res, await cseService.runAlphabeticalImport({ tradingDate }), 202);
+    return ok(res, await cseService.startAlphabeticalImportJob({ tradingDate, triggerType: 'manual' }), 202);
   },
 
   async summary(_req: Request, res: Response) {

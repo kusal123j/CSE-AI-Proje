@@ -33,31 +33,47 @@ function countByStatus(progress: AzLetterProgress[], status: LetterStatus): numb
 }
 
 export function buildAzProgress(run?: CseFetchRun | null, rawSummary?: CseRawRunSummary | null): AzLetterProgress[] {
+  const validation = run?.validation_report ?? rawSummary?.validationReport ?? null;
+  const validationByLetter = new Map((validation?.letterResults ?? []).map((item) => [item.letter.toUpperCase(), item]));
+  const rawLetters = new Set([
+    ...(rawSummary?.files ?? []).map((file) => file.letter?.toUpperCase()).filter(Boolean) as string[],
+    ...(rawSummary?.dbArtifacts ?? []).map((artifact) => artifact.letter?.toUpperCase()).filter(Boolean) as string[]
+  ]);
   const failed = new Set<string>();
+  for (const failure of validation?.failedLetters ?? []) failed.add(failure.letter.toUpperCase());
   for (const warning of warningText(run)) {
-    const match = warning.match(/ALPHABETICAL\s+([A-Z])\s+download failed/i);
+    const match = warning.match(/ALPHABETICAL\s+API\s+([A-Z])\s+/i) || warning.match(/ALPHABETICAL\s+([A-Z])\s+/i);
     if (match?.[1]) failed.add(match[1].toUpperCase());
   }
-  for (const file of rawSummary?.files ?? []) {
-    if (file.letter && file.type === 'download') failed.delete(file.letter.toUpperCase());
-  }
-  const downloaded = new Set((rawSummary?.files ?? []).map((file) => file.letter?.toUpperCase()).filter(Boolean) as string[]);
 
   return LETTERS.map((letter) => {
+    const validationItem = validationByLetter.get(letter);
     let status: LetterStatus = 'Unknown';
     let message = 'No per-letter state was persisted for this letter.';
-    if (failed.has(letter)) {
+
+    if (validationItem) {
+      if (validationItem.status === 'failed') {
+        status = 'Failed';
+        message = `${validationItem.error || 'Letter failed'}${validationItem.attempts ? ` after ${validationItem.attempts} attempts` : ''}.`;
+      } else if (validationItem.status === 'empty') {
+        status = 'Skipped';
+        message = `Valid empty letter. Attempts: ${validationItem.attempts ?? 1}.`;
+      } else {
+        status = 'Parsed';
+        message = `Parsed ${validationItem.rowCount ?? 0} rows. Attempts: ${validationItem.attempts ?? 1}.`;
+      }
+    } else if (failed.has(letter)) {
       status = 'Failed';
-      message = 'Download failed according to latest fetch-run warnings.';
-    } else if (downloaded.has(letter)) {
+      message = 'Letter failed according to latest fetch-run warnings.';
+    } else if (rawLetters.has(letter)) {
       status = 'Parsed';
-      message = 'A raw downloaded file was found for this letter in the raw summary.';
+      message = 'A raw per-letter artifact was found for this letter.';
     } else if (!run) {
       status = 'Pending';
       message = 'No fetch run is available yet.';
     } else if (run.status === 'RUNNING') {
-      status = 'Unknown';
-      message = 'A run is marked running, but live per-letter streaming is not available yet.';
+      status = 'Downloading';
+      message = 'The import run is currently running. Poll latest run/raw summary for updates.';
     }
     return { letter, status, message };
   });
@@ -67,21 +83,21 @@ export function AzProgressGrid({ run, rawSummary }: { run?: CseFetchRun | null; 
   const progress = buildAzProgress(run, rawSummary);
   const failedCount = countByStatus(progress, 'Failed');
   const parsedCount = countByStatus(progress, 'Parsed');
+  const emptyCount = countByStatus(progress, 'Skipped');
   const unknownCount = countByStatus(progress, 'Unknown');
 
   return (
     <div>
       <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-100">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="warning">Realtime: Not available</Badge>
-          <Badge tone="info">Mode: Latest run snapshot</Badge>
+          <Badge tone="info">Mode: HTTP/API A-Z</Badge>
           <Badge tone={failedCount ? 'danger' : 'success'}>Failed letters: {failedCount}</Badge>
-          <Badge tone="success">Parsed from raw files: {parsedCount}</Badge>
+          <Badge tone="success">Parsed: {parsedCount}</Badge>
+          <Badge tone="warning">Valid empty: {emptyCount}</Badge>
           <Badge tone="muted">Unknown: {unknownCount}</Badge>
         </div>
         <p className="mt-2">
-          This grid does not show live browser progress yet. It reconstructs A–Z status from stored fetch-run metadata, warnings, and raw file summary when available.
-          Persistent per-letter import state is documented as a backend enhancement.
+          This grid reconstructs A-Z status from validation metadata, retry attempts, warnings, and raw per-letter artifacts. It does not use browser automation events.
         </p>
       </div>
       <div className="grid grid-cols-4 gap-2 sm:grid-cols-7 md:grid-cols-9 lg:[grid-template-columns:repeat(13,minmax(0,1fr))]">

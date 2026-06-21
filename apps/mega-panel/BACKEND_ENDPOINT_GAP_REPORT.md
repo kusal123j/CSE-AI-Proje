@@ -30,7 +30,7 @@ The frontend generic proxy is now read-only. It no longer forwards arbitrary POS
 
 ### 1. True real-time A-Z import progress
 
-Current UI reconstructs status from latest fetch-run metadata, warnings, and raw file summary. It does not receive live browser automation events.
+Current UI reconstructs status from latest fetch-run metadata, warnings, and raw file summary. It does not receive streaming per-letter worker events yet.
 
 Recommended future options:
 
@@ -49,7 +49,7 @@ cse_fetch_run_letters
   status
   started_at
   finished_at
-  downloaded_file_path
+  raw_artifact_path
   parsed_row_count
   error_message
 ```

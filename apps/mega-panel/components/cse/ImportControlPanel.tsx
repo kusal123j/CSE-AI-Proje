@@ -47,18 +47,18 @@ export function ImportControlPanel({ config, onRunFinished }: { config?: CseImpo
           <div className="mt-1 font-semibold">{config ? (config.schedulerEnabled ? 'Enabled' : 'Disabled') : 'Unknown'}</div>
         </div>
         <div className="rounded-xl bg-muted p-3">
-          <div className="text-xs text-muted-foreground">Real-time progress API</div>
-          <div className="mt-1 font-semibold">{config?.realTimeProgressAvailable ? 'Available' : 'Future enhancement'}</div>
+          <div className="text-xs text-muted-foreground">Job / letter timeout</div>
+          <div className="mt-1 font-semibold">{config?.jobTimeoutSeconds || 300}s / {config?.letterTimeoutSeconds || 30}s</div>
         </div>
         <div className="rounded-xl bg-muted p-3">
-          <div className="text-xs text-muted-foreground">Browser automation</div>
-          <div className="mt-1 font-semibold">Disabled</div>
+          <div className="text-xs text-muted-foreground">Retries / automation mode</div>
+          <div className="mt-1 font-semibold">{config?.maxRetries || 3} retries / HTTP API</div>
         </div>
       </div>
       {error ? <Alert tone="danger" className="mt-4"><strong>Import trigger failed:</strong> {error}</Alert> : null}
       {result ? (
         <Alert tone="success" className="mt-4">
-          <div className="font-semibold">Import request accepted by backend.</div>
+          <div className="font-semibold">Import job accepted by backend. Poll the run ID for status.</div>
           <pre className="mt-2 max-h-52 overflow-auto rounded-xl bg-background p-3 text-xs">{JSON.stringify(result, null, 2)}</pre>
         </Alert>
       ) : null}

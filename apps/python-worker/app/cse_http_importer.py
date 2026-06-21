@@ -336,82 +336,164 @@ def alphabetical_api_url(source_url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}/api/alphabetical"
 
 
-@retry(
-    retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError, CseImportFetchError)),
-    stop=stop_after_attempt(settings.cse_import_max_retries),
-    wait=wait_exponential(multiplier=1, min=1, max=8),
-    reraise=True,
-)
-def fetch_alphabetical_api_rows(source_url: str) -> tuple[list[CseCompanyRow], list[str], str]:
+def find_duplicate_symbols(rows: list[CseCompanyRow]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for row in rows:
+        symbol = row.normalized_symbol
+        if symbol in seen:
+            duplicates.add(symbol)
+        seen.add(symbol)
+    return sorted(duplicates)
+
+
+def dedupe_rows_with_count(rows: list[CseCompanyRow]) -> tuple[list[CseCompanyRow], int, list[str]]:
+    by_symbol: dict[str, CseCompanyRow] = {}
+    for row in rows:
+        by_symbol[row.normalized_symbol] = row
+    duplicates = find_duplicate_symbols(rows)
+    return [by_symbol[key] for key in sorted(by_symbol)], max(len(rows) - len(by_symbol), 0), duplicates
+
+
+def _letter_failure(letter: str, attempts: int, message: str, status_code: int | None = None, raw_text: str | None = None) -> tuple[dict[str, Any], dict[str, Any], list[CseCompanyRow], list[str]]:
+    raw: dict[str, Any] = {"letter": letter, "statusCode": status_code, "error": message, "attempts": attempts}
+    if raw_text is not None:
+        raw["rawText"] = raw_text
+    result = {"letter": letter, "status": "failed", "rowCount": 0, "attempts": attempts, "error": message, "lastError": message}
+    return raw, result, [], [message]
+
+
+def fetch_one_alphabetical_letter(client: httpx.Client, api_url: str, source_url: str, letter: str) -> tuple[dict[str, Any], dict[str, Any], list[CseCompanyRow], list[str]]:
+    max_attempts = max(settings.cse_import_retry_count, 1)
+    warnings: list[str] = []
+    last_error = "Unknown letter fetch error"
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.post(api_url, data={"alphabet": letter})
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            last_error = f"CSE ALPHABETICAL API {letter} fetch failed: {exc}"
+            if attempt < max_attempts:
+                warnings.append(f"{last_error}; retrying attempt {attempt + 1}/{max_attempts}.")
+                continue
+            return _letter_failure(letter, attempt, last_error)
+
+        raw_text = response.text
+        if response.status_code == 429 or response.status_code >= 500:
+            last_error = f"CSE ALPHABETICAL API {letter} returned transient status {response.status_code}."
+            if attempt < max_attempts:
+                warnings.append(f"{last_error}; retrying attempt {attempt + 1}/{max_attempts}.")
+                continue
+            return _letter_failure(letter, attempt, last_error, response.status_code, raw_text)
+
+        if response.status_code != 200:
+            last_error = f"CSE ALPHABETICAL API {letter} returned status {response.status_code}."
+            return _letter_failure(letter, attempt, last_error, response.status_code, raw_text)
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            last_error = f"CSE ALPHABETICAL API {letter} returned invalid JSON: {exc}"
+            if attempt < max_attempts:
+                warnings.append(f"{last_error}; retrying attempt {attempt + 1}/{max_attempts}.")
+                continue
+            return _letter_failure(letter, attempt, last_error, response.status_code, raw_text)
+
+        records = payload.get("reqAlphabetical") or payload.get("data") or payload.get("rows") or []
+        if not isinstance(records, list):
+            last_error = f"CSE ALPHABETICAL API {letter} returned an unexpected payload shape."
+            return _letter_failure(letter, attempt, last_error, response.status_code, raw_text)
+
+        letter_rows: list[CseCompanyRow] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            row = row_from_record({**record, "sourceLetter": letter}, source_url)
+            if row:
+                row.source_letter = letter
+                row.raw_row = {**row.raw_row, "sourceLetter": letter, "sourceEndpoint": api_url}
+                letter_rows.append(row)
+
+        status = "success" if letter_rows else "empty"
+        raw = {"letter": letter, "statusCode": response.status_code, "payload": payload, "attempts": attempt}
+        result = {"letter": letter, "status": status, "rowCount": len(letter_rows), "attempts": attempt, "lastError": None}
+        return raw, result, letter_rows, warnings
+
+    return _letter_failure(letter, max_attempts, last_error)
+
+
+def fetch_alphabetical_api_rows(source_url: str) -> tuple[list[CseCompanyRow], list[str], list[dict[str, Any]], list[dict[str, Any]], int, list[str]]:
     api_url = alphabetical_api_url(source_url)
     headers = {
         "User-Agent": settings.cse_import_user_agent,
         "Accept": "application/json",
         "Referer": source_url,
     }
-    rows: list[CseCompanyRow] = []
+    rows_before_deduplication: list[CseCompanyRow] = []
     warnings: list[str] = []
     response_bodies: list[dict[str, Any]] = []
+    letter_results: list[dict[str, Any]] = []
 
     try:
-        with httpx.Client(timeout=settings.cse_import_timeout_seconds, follow_redirects=True, headers=headers) as client:
+        with httpx.Client(timeout=settings.cse_import_letter_timeout_seconds, follow_redirects=True, headers=headers) as client:
             for codepoint in range(ord("A"), ord("Z") + 1):
                 letter = chr(codepoint)
-                response = client.post(api_url, data={"alphabet": letter})
-                if response.status_code != 200:
-                    warnings.append(f"CSE ALPHABETICAL API {letter} returned status {response.status_code}.")
-                    continue
-                payload = response.json()
-                response_bodies.append({"letter": letter, "payload": payload})
-                records = payload.get("reqAlphabetical") or payload.get("data") or []
-                if not isinstance(records, list):
-                    warnings.append(f"CSE ALPHABETICAL API {letter} returned an unexpected payload shape.")
-                    continue
-                for record in records:
-                    if not isinstance(record, dict):
-                        continue
-                    row = row_from_record({**record, "sourceLetter": letter}, source_url)
-                    if row:
-                        row.source_letter = letter
-                        row.raw_row = {**row.raw_row, "sourceLetter": letter, "sourceEndpoint": api_url}
-                        rows.append(row)
+                raw, result, letter_rows, letter_warnings = fetch_one_alphabetical_letter(client, api_url, source_url, letter)
+                warnings.extend(letter_warnings)
+                if result.get("status") == "failed" and result.get("error"):
+                    warnings.append(str(result["error"]))
+                response_bodies.append(raw)
+                letter_results.append(result)
+                rows_before_deduplication.extend(letter_rows)
     except (httpx.TimeoutException, httpx.TransportError) as exc:
         raise CseImportFetchError(f"CSE ALPHABETICAL API fetch failed: {exc}") from exc
-    except ValueError as exc:
-        raise CseImportParseError(f"CSE ALPHABETICAL API returned invalid JSON: {exc}") from exc
 
-    deduped = dedupe_rows(rows)
+    deduped, deduped_count, duplicate_symbols = dedupe_rows_with_count(rows_before_deduplication)
     if not deduped:
         raise CseImportParseError("No listed-company rows were parsed from the CSE ALPHABETICAL API")
-    return deduped, warnings, json.dumps(response_bodies, sort_keys=True, default=str)
-
+    return deduped, warnings, response_bodies, letter_results, deduped_count, duplicate_symbols
 
 def run_http_import(source_url: str | None = None) -> dict[str, Any]:
     url = source_url or settings.cse_listed_company_directory_url
     assert_alphabetical_source_url(url)
     fetched_at = datetime.now(timezone.utc).isoformat()
-    html = fetch_html(url)
     warnings: list[str] = []
-    try:
-        rows = parse_alphabetical_html(html, url)
-        checksum_source = html
-    except CseImportParseError as exc:
-        warnings.append(f"HTML shell did not contain parseable rows; using same-directory ALPHABETICAL JSON endpoint: {exc}")
-        rows, api_warnings, api_content = fetch_alphabetical_api_rows(url)
-        warnings.extend(api_warnings)
-        checksum_source = html + api_content
+
+    rows, api_warnings, raw_letter_responses, letter_results, records_deduplicated, duplicate_symbols = fetch_alphabetical_api_rows(url)
+    warnings.extend(api_warnings)
+
+    checksum_source = json.dumps(raw_letter_responses, sort_keys=True, default=str)
     checksum = hashlib.sha256(checksum_source.encode("utf-8")).hexdigest()
+    letters_attempted = len(letter_results)
+    letters_successful = len([item for item in letter_results if item.get("status") in {"success", "empty"}])
+    letters_failed = len([item for item in letter_results if item.get("status") == "failed"])
+    failed_letters = [
+        {"letter": str(item.get("letter")), "error": str(item.get("error") or "Unknown letter fetch error"), "attempts": int(item.get("attempts") or 1)}
+        for item in letter_results
+        if item.get("status") == "failed"
+    ]
+    raw_row_count = len(rows) + records_deduplicated
 
     return {
         "status": "success",
         "source": "CSE_LISTED_COMPANY_DIRECTORY_ALPHABETICAL",
         "sourceUrl": url,
         "fetchMode": "python-http",
+        "fetchGranularity": "A_Z_LETTER_BY_LETTER",
+        "fullExportSupported": False,
+        "browserAutomationEnabled": False,
         "fetchedAt": fetched_at,
         "rowCount": len(rows),
-        "recordsBeforeDeduplication": len(rows),
-        "recordsDeduplicated": 0,
+        "recordsBeforeDeduplication": raw_row_count,
+        "recordsDeduplicated": records_deduplicated,
+        "duplicateSymbols": duplicate_symbols,
         "checksum": checksum,
         "warnings": warnings,
+        "lettersAttempted": letters_attempted,
+        "lettersSuccessful": letters_successful,
+        "lettersFailed": letters_failed,
+        "failedLetters": failed_letters,
+        "letterResults": letter_results,
+        "rawLetterResponses": raw_letter_responses,
         "rows": [row.to_backend_dict() for row in rows],
     }

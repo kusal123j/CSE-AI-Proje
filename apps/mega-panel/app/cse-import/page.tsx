@@ -29,7 +29,7 @@ export default function CseImportPage() {
     <div>
       <PageHeader
         title="CSE Import Control"
-        description="Manual control and visibility for the browser-only CSE Listed Company Directory ALPHABETICAL A–Z importer. This page never calls CSE export/API URLs directly."
+        description="Manual control and visibility for the lightweight HTTP/API CSE Listed Company Directory ALPHABETICAL A–Z importer. No Playwright/Chromium browser automation is used."
         actions={<Button variant="secondary" onClick={refreshAll}>Refresh</Button>}
       />
 

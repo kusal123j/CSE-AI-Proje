@@ -10,6 +10,9 @@ test('import config reports Python HTTP mode and disables browser automation/fal
   assert.match(source, /source:\s*['"]CSE_LISTED_COMPANY_DIRECTORY_ALPHABETICAL['"]/);
   assert.match(source, /browserAutomationEnabled:\s*false/);
   assert.match(source, /playwrightEnabled:\s*false/);
+  assert.match(source, /directApiExportAllowed:\s*true/);
+  assert.match(source, /fetchGranularity:\s*['"]A_Z_LETTER_BY_LETTER['"]/);
+  assert.match(source, /fullExportSupported:\s*false/);
   assert.match(source, /fallbackEnabled:\s*false/);
   assert.doesNotMatch(source, /browserAutomationOnly:\s*true/);
 });

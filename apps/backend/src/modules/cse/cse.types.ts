@@ -30,6 +30,49 @@ export interface CseDownloadedLetterFile {
 export interface CseLetterFailure {
   letter: string;
   error: string;
+  attempts?: number;
+}
+
+export interface CseLetterArtifact {
+  letter: string;
+  filePath: string;
+  suggestedFilename: string;
+  contentType?: string | null;
+  checksum?: string | null;
+  rowCount?: number | null;
+  status?: 'success' | 'failed' | 'empty';
+  attempts?: number | null;
+  lastError?: string | null;
+}
+
+export interface CseLetterValidationDetail {
+  letter: string;
+  status: 'success' | 'failed' | 'empty' | 'unknown';
+  rowCount: number;
+  attempts?: number | null;
+  error?: string | null;
+}
+
+export interface CseImportValidationReport {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  uniqueCompanyCount: number;
+  uniqueSymbolCount: number;
+  rawRowCount: number;
+  duplicateSymbols: string[];
+  lettersAttempted: number;
+  lettersSuccessful: number;
+  lettersFailed: number;
+  failedLetters: CseLetterFailure[];
+  emptyLetters: string[];
+  letterResults: CseLetterValidationDetail[];
+  thresholds: {
+    minCompanies: number;
+    minSecurities: number;
+    minExpectedRows: number;
+  };
+  promotionAllowed: boolean;
 }
 
 export interface FetchAlphabeticalResult {
@@ -40,12 +83,16 @@ export interface FetchAlphabeticalResult {
   warnings: string[];
   rawStoragePath: string;
   downloadedFiles: CseDownloadedLetterFile[];
+  rawArtifacts?: CseLetterArtifact[];
+  letterResults?: CseLetterValidationDetail[];
   lettersAttempted: number;
   lettersSuccessful: number;
   lettersFailed: number;
   failedLetters: CseLetterFailure[];
   recordsBeforeDeduplication: number;
   recordsDeduplicated: number;
+  duplicateSymbols?: string[];
+  validationReport?: CseImportValidationReport;
 }
 
 export interface CseImportResult {
@@ -70,6 +117,31 @@ export interface CseImportResult {
   lettersSuccessful?: number;
   lettersFailed?: number;
   failedLetters?: CseLetterFailure[];
+  validationReport?: CseImportValidationReport;
+}
+
+export interface CseImportStartResult {
+  ok: true;
+  runId: string;
+  status: 'RUNNING';
+  triggerType: 'manual' | 'scheduled';
+  tradingDate: string;
+  message: string;
+}
+
+export interface CseFreshnessMeta {
+  lastImportedAt: string | null;
+  lastSuccessfulImportId: string | null;
+  source: 'CSE Listed Company Directory - ALPHABETICAL';
+  sourceUrl: string;
+  mode: CseFetchMode;
+  isStale: boolean;
+  staleAfterHours: number;
+}
+
+export interface CseDataResponse<T> {
+  data: T;
+  meta: CseFreshnessMeta;
 }
 
 export interface CseListQuery {

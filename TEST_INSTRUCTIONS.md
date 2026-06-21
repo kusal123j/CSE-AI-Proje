@@ -1,33 +1,38 @@
-# Test Results — Final Fully Corrected Package
+# Test Instructions
 
-## Commands verified
+From the project root:
 
 ```bash
 npm ci --ignore-scripts
+```
+
+Backend:
+
+```bash
 DATABASE_URL=postgresql://test:test@localhost:5432/test npm --prefix apps/backend run typecheck
 DATABASE_URL=postgresql://test:test@localhost:5432/test npm --prefix apps/backend test
 DATABASE_URL=postgresql://test:test@localhost:5432/test npm --prefix apps/backend run build
+```
+
+Python worker:
+
+```bash
+python -m pip install -r apps/python-worker/requirements.txt
 PYTHONPATH=apps/python-worker pytest -q apps/python-worker/tests
+```
+
+Mega Panel:
+
+```bash
 npm --prefix apps/mega-panel run typecheck
 ```
 
-## Results
+Verified in this package:
 
 ```text
-Backend npm install: passed
 Backend typecheck: passed
 Backend tests: 29/29 passed
 Backend build: passed
 Python worker tests: 11/11 passed
 Mega Panel typecheck: passed
 ```
-
-## Important final tests added
-
-- Backend validation accepts valid empty A-Z letters as completed letters.
-- Python worker accepts valid empty per-letter payloads.
-- Python worker run-level `lettersSuccessful` counts both `success` and valid `empty` letters.
-
-## Notes
-
-`npm ci` reports dependency audit warnings from the existing dependency tree. These are not caused by the CSE importer correction and were not changed by this package.

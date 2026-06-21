@@ -26,7 +26,9 @@ class Settings:
         os.getenv("CSE_IMPORT_SOURCE_URL", "https://www.cse.lk/listed-entities/listed-company-directory?page=ALPHABETICAL"),
     )
     cse_import_timeout_seconds: int = int(os.getenv("CSE_IMPORT_TIMEOUT_SECONDS", "30"))
+    cse_import_letter_timeout_seconds: int = int(os.getenv("CSE_IMPORT_LETTER_TIMEOUT_SECONDS", os.getenv("CSE_IMPORT_TIMEOUT_SECONDS", "30")))
     cse_import_max_retries: int = int(os.getenv("CSE_IMPORT_MAX_RETRIES", "3"))
+    cse_import_retry_count: int = int(os.getenv("CSE_IMPORT_RETRY_COUNT", os.getenv("CSE_IMPORT_MAX_RETRIES", "3")))
     cse_import_user_agent: str = os.getenv(
         "CSE_IMPORT_USER_AGENT",
         "Mozilla/5.0 compatible CSE Research Assistant Importer",

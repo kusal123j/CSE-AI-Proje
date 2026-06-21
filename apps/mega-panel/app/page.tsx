@@ -48,7 +48,7 @@ export default function DashboardPage() {
       ) : null}
 
       <div className="mt-8">
-        <PageHeader title="Recent fetch runs" description="Latest CSE A–Z browser import executions recorded by the backend." />
+        <PageHeader title="Recent fetch runs" description="Latest CSE HTTP/API A–Z import executions recorded by the backend." />
         {runs.loading ? <Skeleton className="h-72" /> : runs.error ? <BackendMissingState error={runs.error} expectedEndpoint="GET /api/cse/import/runs" /> : <FetchRunsTable runs={runs.data || []} />}
       </div>
     </div>

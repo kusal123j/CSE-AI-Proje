@@ -210,10 +210,12 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- -----------------------------------------------------------------------------
 
 DO $$ BEGIN
-  CREATE TYPE cse_fetch_run_status AS ENUM ('SUCCESS', 'PARTIAL_SUCCESS', 'FAILED');
+  CREATE TYPE cse_fetch_run_status AS ENUM ('RUNNING', 'SUCCESS', 'PARTIAL_SUCCESS', 'FAILED');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
+
+ALTER TYPE cse_fetch_run_status ADD VALUE IF NOT EXISTS 'RUNNING';
 
 CREATE TABLE IF NOT EXISTS cse_companies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -223,6 +225,7 @@ CREATE TABLE IF NOT EXISTS cse_companies (
   logo_url TEXT,
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_import_run_id UUID,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -235,6 +238,7 @@ CREATE TABLE IF NOT EXISTS cse_securities (
   normalized_symbol VARCHAR(30) NOT NULL UNIQUE,
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_import_run_id UUID,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -251,6 +255,7 @@ CREATE TABLE IF NOT EXISTS cse_daily_market_snapshots (
   turnover NUMERIC(20, 4),
   change_amount NUMERIC(18, 4),
   change_percent NUMERIC(12, 6),
+  import_run_id UUID,
   source_page TEXT NOT NULL DEFAULT 'ALPHABETICAL',
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -264,6 +269,7 @@ CREATE TABLE IF NOT EXISTS cse_fetch_runs (
   source TEXT NOT NULL DEFAULT 'CSE_ALPHABETICAL',
   source_url TEXT NOT NULL,
   fetch_mode TEXT NOT NULL,
+  trigger_type TEXT NOT NULL DEFAULT 'manual',
   status cse_fetch_run_status NOT NULL DEFAULT 'FAILED',
   started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   finished_at TIMESTAMPTZ,
@@ -283,6 +289,8 @@ CREATE TABLE IF NOT EXISTS cse_fetch_runs (
   letters_failed INTEGER,
   records_before_deduplication INTEGER,
   records_deduplicated INTEGER,
+  validation_report JSONB,
+  promoted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -291,6 +299,12 @@ ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS letters_successful INTEGER;
 ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS letters_failed INTEGER;
 ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS records_before_deduplication INTEGER;
 ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS records_deduplicated INTEGER;
+ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS trigger_type TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS validation_report JSONB;
+ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMPTZ;
+ALTER TABLE cse_companies ADD COLUMN IF NOT EXISTS last_seen_import_run_id UUID;
+ALTER TABLE cse_securities ADD COLUMN IF NOT EXISTS last_seen_import_run_id UUID;
+ALTER TABLE cse_daily_market_snapshots ADD COLUMN IF NOT EXISTS import_run_id UUID;
 
 CREATE INDEX IF NOT EXISTS idx_cse_companies_last_seen ON cse_companies(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_cse_companies_active ON cse_companies(is_active);
@@ -303,6 +317,65 @@ CREATE INDEX IF NOT EXISTS idx_cse_daily_market_turnover ON cse_daily_market_sna
 CREATE INDEX IF NOT EXISTS idx_cse_daily_market_trade_volume ON cse_daily_market_snapshots(trade_volume);
 CREATE INDEX IF NOT EXISTS idx_cse_daily_market_share_volume ON cse_daily_market_snapshots(share_volume);
 CREATE INDEX IF NOT EXISTS idx_cse_fetch_runs_started_at ON cse_fetch_runs(started_at DESC);
+
+CREATE TABLE IF NOT EXISTS cse_import_artifacts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  import_run_id UUID NOT NULL REFERENCES cse_fetch_runs(id) ON DELETE CASCADE,
+  letter CHAR(1),
+  artifact_type TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  checksum TEXT,
+  row_count INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cse_import_artifacts_run_id ON cse_import_artifacts(import_run_id);
+CREATE INDEX IF NOT EXISTS idx_cse_import_artifacts_letter ON cse_import_artifacts(letter);
+
+
+CREATE TABLE IF NOT EXISTS cse_import_stage_companies (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  import_run_id UUID NOT NULL REFERENCES cse_fetch_runs(id) ON DELETE CASCADE,
+  company_name TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,
+  profile_url TEXT,
+  logo_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_stage_company_run_name_unique UNIQUE (import_run_id, normalized_name)
+);
+
+CREATE TABLE IF NOT EXISTS cse_import_stage_securities (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  import_run_id UUID NOT NULL REFERENCES cse_fetch_runs(id) ON DELETE CASCADE,
+  normalized_name TEXT NOT NULL,
+  symbol VARCHAR(30) NOT NULL,
+  normalized_symbol VARCHAR(30) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_stage_security_run_symbol_unique UNIQUE (import_run_id, normalized_symbol)
+);
+
+CREATE TABLE IF NOT EXISTS cse_import_stage_market_snapshots (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  import_run_id UUID NOT NULL REFERENCES cse_fetch_runs(id) ON DELETE CASCADE,
+  normalized_symbol VARCHAR(30) NOT NULL,
+  symbol VARCHAR(30) NOT NULL,
+  trading_date DATE NOT NULL,
+  last_traded_price NUMERIC(18, 4),
+  trade_volume BIGINT,
+  share_volume BIGINT,
+  turnover NUMERIC(20, 4),
+  change_amount NUMERIC(18, 4),
+  change_percent NUMERIC(12, 6),
+  source_letter CHAR(1),
+  raw_row JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_stage_snapshot_run_symbol_date_unique UNIQUE (import_run_id, normalized_symbol, trading_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cse_stage_companies_run_id ON cse_import_stage_companies(import_run_id);
+CREATE INDEX IF NOT EXISTS idx_cse_stage_securities_run_id ON cse_import_stage_securities(import_run_id);
+CREATE INDEX IF NOT EXISTS idx_cse_stage_snapshots_run_id ON cse_import_stage_market_snapshots(import_run_id);
+
 
 DROP TRIGGER IF EXISTS cse_companies_set_updated_at ON cse_companies;
 CREATE TRIGGER cse_companies_set_updated_at

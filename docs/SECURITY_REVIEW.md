@@ -1,4 +1,4 @@
-# Security Review — CSE Browser A-Z Importer
+# Security Review — CSE HTTP/API A-Z Importer
 
 ## Manual import protection
 
@@ -20,9 +20,11 @@ https://www.cse.lk/listed-entities/listed-company-directory?page=ALPHABETICAL
 
 Forbidden tabs are blocked by source guard tests.
 
-## Browser automation
+## Import method
 
-The browser opens only the ALPHABETICAL page and interacts with the A-Z letter buttons and Download button. The code does not call hidden export/API URLs directly.
+The active importer is a lightweight backend/Python HTTP/API importer. It requests the CSE ALPHABETICAL data one letter at a time from A to Z and does not use Playwright, Chromium, Selenium, or real browser automation.
+
+The importer must not use Date Listed, Type of Issue, Turnover, Trade Volume, Share Volume, Gainers, or Losers as source tabs. Those analytics must be calculated internally from the ALPHABETICAL import data.
 
 ## Scheduler
 
@@ -31,3 +33,5 @@ Scheduler is disabled by default:
 ```env
 CSE_IMPORT_SCHEDULER_ENABLED=false
 ```
+
+Enable it explicitly in production after the artifact storage volume and database migrations are ready.
