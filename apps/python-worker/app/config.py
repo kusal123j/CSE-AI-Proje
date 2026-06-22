@@ -45,6 +45,11 @@ class Settings:
     )
     cse_daily_market_summary_timeout_seconds: int = int(os.getenv("CSE_DAILY_MARKET_SUMMARY_TIMEOUT_SECONDS", "90"))
 
+    cse_company_profile_timeout_seconds: int = int(os.getenv("CSE_COMPANY_PROFILE_TIMEOUT_SECONDS", "90"))
+    cse_company_financial_reports_timeout_seconds: int = int(os.getenv("CSE_COMPANY_FINANCIAL_REPORTS_TIMEOUT_SECONDS", "120"))
+    cse_company_announcements_timeout_seconds: int = int(os.getenv("CSE_COMPANY_ANNOUNCEMENTS_TIMEOUT_SECONDS", "120"))
+    cse_latest_price_timeout_seconds: int = int(os.getenv("CSE_LATEST_PRICE_TIMEOUT_SECONDS", "60"))
+
     cse_gics_summary_source_url: str = os.getenv(
         "CSE_GICS_SUMMARY_SOURCE_URL",
         "https://www.cse.lk/equity/gics-industry-group-summary",

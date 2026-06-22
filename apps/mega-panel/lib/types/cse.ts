@@ -336,3 +336,134 @@ export interface CseDailyMarketSummary {
   market_pbv_today?: number | string | null;
   market_dy_today?: number | string | null;
 }
+
+export interface CseCompanyProfileRow {
+  id: string;
+  symbol: string;
+  company_name: string;
+  isin?: string | null;
+  logo_url?: string | null;
+  gics_industry_group?: string | null;
+  board?: string | null;
+  last_profile_fetched_at?: string | null;
+  last_traded_price?: number | string | null;
+  change_amount?: number | string | null;
+  change_percent?: number | string | null;
+  latest_price_updated_at?: string | null;
+  report_count?: number | string | null;
+  announcement_count?: number | string | null;
+}
+
+export interface CseCompanyProfileDetail {
+  profile: CseCompanyProfileRow & {
+    business_summary?: string | null;
+    founded_year?: number | string | null;
+    quoted_date?: string | null;
+    financial_year_end?: string | null;
+    address?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    fax?: string | null;
+    website?: string | null;
+    company_secretaries?: string | null;
+    auditors?: string | null;
+    articles_of_association_url?: string | null;
+  };
+  people: CseCompanyPerson[];
+  financialReports: CseCompanyFinancialReport[];
+  announcements: CseCompanyAnnouncement[];
+  latestPrice: CseLatestPrice | null;
+}
+
+export interface CseCompanyPerson {
+  id: string;
+  person_name: string;
+  designation?: string | null;
+  role_group?: string | null;
+  is_current?: boolean;
+}
+
+export interface CseCompanyFinancialReport {
+  id: string;
+  symbol: string;
+  report_type: string;
+  title: string;
+  financial_year?: string | null;
+  period?: string | null;
+  published_date?: string | null;
+  pdf_url?: string | null;
+  document_id?: string | null;
+  download_status?: string | null;
+  extract_status?: string | null;
+  company_name?: string | null;
+  document_status?: string | null;
+}
+
+export interface CseCompanyAnnouncement {
+  id: string;
+  symbol: string;
+  announcement_title: string;
+  announcement_category?: string | null;
+  published_at?: string | null;
+  published_date?: string | null;
+  pdf_url?: string | null;
+  document_id?: string | null;
+  company_name?: string | null;
+  document_status?: string | null;
+}
+
+export interface CseLatestPrice {
+  id: string;
+  symbol: string;
+  company_name?: string | null;
+  last_traded_price?: number | string | null;
+  change_amount?: number | string | null;
+  change_percent?: number | string | null;
+  previous_close?: number | string | null;
+  open_price?: number | string | null;
+  high_price?: number | string | null;
+  low_price?: number | string | null;
+  turnover?: number | string | null;
+  share_volume?: number | string | null;
+  trade_volume?: number | string | null;
+  market_cap?: number | string | null;
+  market_status?: string | null;
+  trade_time?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CseImportRunSymbolResult {
+  id: string;
+  run_id: string;
+  symbol: string;
+  import_type: string;
+  status: string;
+  records_found?: number | string | null;
+  documents_discovered?: number | string | null;
+  announcements_discovered?: number | string | null;
+  error_message?: string | null;
+  warnings_json?: string[] | string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface CseImportRunSymbolResultsResponse {
+  runId: string;
+  summary: {
+    total: number | string;
+    success: number | string;
+    failed: number | string;
+    warning: number | string;
+    skipped: number | string;
+  };
+  items: CseImportRunSymbolResult[];
+}
+
+export interface CseMarketStatusSnapshot {
+  id: string;
+  status?: string | null;
+  is_open?: boolean | null;
+  source?: string | null;
+  checked_at?: string | null;
+  created_at?: string | null;
+}

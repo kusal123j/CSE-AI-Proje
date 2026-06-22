@@ -71,3 +71,57 @@ export function assertGicsClassificationSourceUrl(sourceUrl: string): void {
 export function assertDailyMarketSummarySourceUrl(sourceUrl: string): void {
   assertCsePath(sourceUrl, '/equity/daily-market-summary', 'Daily Market Summary importer');
 }
+
+function assertCseApiPath(sourceUrl: string, expectedPath: string, label: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(sourceUrl);
+  } catch {
+    throw new AppError(400, `Invalid ${label} URL`);
+  }
+  if (!['www.cse.lk', 'cse.lk', 'cdn.cse.lk'].includes(parsed.hostname)) {
+    throw new AppError(400, `Only cse.lk/cdn.cse.lk URLs are allowed for ${label}`);
+  }
+  if (!parsed.pathname.includes(expectedPath)) {
+    throw new AppError(400, `Only the CSE ${expectedPath} path is allowed for ${label}`);
+  }
+}
+
+export function assertCseCompanyProfileUrl(sourceUrl: string): void {
+  assertCseApiPath(sourceUrl, '/company-profile', 'Company Profile importer');
+}
+
+export function assertCseCompanyProfileApiUrl(sourceUrl: string): void {
+  assertCseApiPath(sourceUrl, '/api/companyInfoSummery', 'Company Profile API importer');
+}
+
+export function assertCseFinancialReportsApiUrl(sourceUrl: string): void {
+  assertCseApiPath(sourceUrl, '/api/getFinancialAnnouncement', 'Company Financial Reports importer');
+}
+
+export function assertCseAnnouncementApiUrl(sourceUrl: string): void {
+  assertCseApiPath(sourceUrl, '/api/approvedAnnouncement', 'Company Announcements importer');
+}
+
+export function assertCseLatestPriceApiUrl(sourceUrl: string): void {
+  assertCseApiPath(sourceUrl, '/api/todaySharePrice', 'Latest Price importer');
+}
+
+export function assertCseMarketStatusApiUrl(sourceUrl: string): void {
+  assertCseApiPath(sourceUrl, '/api/marketStatus', 'Market Status importer');
+}
+
+export function assertCsePdfUrl(sourceUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(sourceUrl);
+  } catch {
+    throw new AppError(400, 'Invalid CSE PDF URL');
+  }
+  if (!['www.cse.lk', 'cse.lk', 'cdn.cse.lk'].includes(parsed.hostname)) {
+    throw new AppError(400, 'Only CSE/CDN PDF URLs are allowed');
+  }
+  if (!parsed.pathname.toLowerCase().endsWith('.pdf')) {
+    throw new AppError(400, 'Only PDF URLs are allowed for CSE report/announcement documents');
+  }
+}

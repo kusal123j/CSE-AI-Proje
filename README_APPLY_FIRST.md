@@ -1,30 +1,15 @@
-# README_APPLY_FIRST — Full Corrected Project Package
+# Apply this package first
 
-This zip already contains the full project with the corrected CSE Daily Market Summary feature applied.
+This ZIP contains modified/new files only. Copy it over your latest original project, preserving paths.
 
-You do **not** need to apply a separate modified-files zip on top of this package.
+Recommended:
 
-## Steps
-
-1. Backup your current project folder.
-2. Extract this zip.
-3. Open the extracted `CSE-AI-Proje-main` folder.
-4. Run your normal Docker/dev commands.
-5. Run the verification commands below.
-
-## Verification commands
+1. Back up your project.
+2. Extract this ZIP over your project root.
+3. Run database migration/startup schema.
+4. Run backend/Python/Mega Panel checks listed in `TEST_RESULTS.md`.
+5. Run live verification before production scheduler enablement:
 
 ```bash
-python3 -m pytest apps/python-worker/tests/test_cse_daily_market_summary_importer.py -q
-python3 -m py_compile apps/python-worker/app/cse_daily_market_summary_importer.py apps/python-worker/app/main.py
-npm --prefix apps/backend install
-npm --prefix apps/backend run build
-npm --prefix apps/mega-panel install
-npm --prefix apps/mega-panel run build
+python apps/python-worker/scripts/verify_cse_live_endpoints.py
 ```
-
-## Important notes
-
-- No Playwright or Chromium was added.
-- Daily Market Summary uses HTTP/API first and HTML fallback/merge.
-- Daily Market Summary is stored separately from company-level daily snapshots.

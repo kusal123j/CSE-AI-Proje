@@ -643,3 +643,242 @@ DROP TRIGGER IF EXISTS cse_security_gics_classifications_set_updated_at ON cse_s
 CREATE TRIGGER cse_security_gics_classifications_set_updated_at
 BEFORE UPDATE ON cse_security_gics_classifications
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- -----------------------------------------------------------------------------
+-- CSE Company Intelligence importer: company profile, financial reports,
+-- announcements, and latest price cache. Charts are intentionally not stored.
+-- -----------------------------------------------------------------------------
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS cse_company_id UUID REFERENCES cse_companies(id) ON DELETE SET NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS cse_security_id UUID REFERENCES cse_securities(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_documents_cse_company_id ON documents(cse_company_id);
+CREATE INDEX IF NOT EXISTS idx_documents_cse_security_id ON documents(cse_security_id);
+
+CREATE TABLE IF NOT EXISTS cse_company_profiles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID NOT NULL REFERENCES cse_companies(id) ON DELETE CASCADE,
+  security_id UUID NOT NULL REFERENCES cse_securities(id) ON DELETE CASCADE,
+  symbol VARCHAR(30) NOT NULL UNIQUE,
+  company_name TEXT NOT NULL,
+  isin VARCHAR(50),
+  logo_url TEXT,
+  business_summary TEXT,
+  gics_industry_group TEXT,
+  founded_year INTEGER,
+  quoted_date DATE,
+  financial_year_end TEXT,
+  board TEXT,
+  address TEXT,
+  email TEXT,
+  phone TEXT,
+  fax TEXT,
+  website TEXT,
+  company_secretaries TEXT,
+  auditors TEXT,
+  articles_of_association_url TEXT,
+  source_url TEXT NOT NULL,
+  raw_payload_hash TEXT,
+  raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  warnings_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  last_profile_fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cse_company_profile_snapshots (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id UUID REFERENCES cse_company_profiles(id) ON DELETE SET NULL,
+  company_id UUID REFERENCES cse_companies(id) ON DELETE SET NULL,
+  security_id UUID REFERENCES cse_securities(id) ON DELETE SET NULL,
+  symbol VARCHAR(30) NOT NULL,
+  source_url TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'company-profile',
+  raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  normalized_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  payload_hash TEXT,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cse_company_people (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID NOT NULL REFERENCES cse_companies(id) ON DELETE CASCADE,
+  security_id UUID NOT NULL REFERENCES cse_securities(id) ON DELETE CASCADE,
+  symbol VARCHAR(30) NOT NULL,
+  person_name TEXT NOT NULL,
+  designation TEXT,
+  role_group TEXT NOT NULL DEFAULT 'OTHER',
+  is_current BOOLEAN NOT NULL DEFAULT true,
+  source_url TEXT,
+  raw_row_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_company_people_symbol_name_role_unique UNIQUE (symbol, person_name, role_group)
+);
+
+CREATE TABLE IF NOT EXISTS cse_company_financial_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID NOT NULL REFERENCES cse_companies(id) ON DELETE CASCADE,
+  security_id UUID NOT NULL REFERENCES cse_securities(id) ON DELETE CASCADE,
+  symbol VARCHAR(30) NOT NULL,
+  report_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  financial_year VARCHAR(20),
+  period VARCHAR(50),
+  published_date DATE,
+  pdf_url TEXT,
+  source_url TEXT,
+  document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
+  source_document_id TEXT,
+  payload_hash TEXT,
+  download_status TEXT NOT NULL DEFAULT 'DISCOVERED',
+  extract_status TEXT NOT NULL DEFAULT 'PENDING',
+  raw_row_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_company_financial_reports_symbol_pdf_unique UNIQUE (symbol, pdf_url)
+);
+
+CREATE TABLE IF NOT EXISTS cse_company_announcements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID NOT NULL REFERENCES cse_companies(id) ON DELETE CASCADE,
+  security_id UUID NOT NULL REFERENCES cse_securities(id) ON DELETE CASCADE,
+  symbol VARCHAR(30) NOT NULL,
+  announcement_title TEXT NOT NULL,
+  announcement_category TEXT,
+  published_at TIMESTAMPTZ,
+  published_date DATE,
+  pdf_url TEXT,
+  source_url TEXT,
+  document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
+  source_announcement_id TEXT,
+  payload_hash TEXT,
+  date_range_start DATE,
+  date_range_end DATE,
+  raw_row_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cse_company_announcements_symbol_source_id_unique
+  ON cse_company_announcements(symbol, source_announcement_id)
+  WHERE source_announcement_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS cse_company_announcements_symbol_pdf_unique
+  ON cse_company_announcements(symbol, pdf_url)
+  WHERE pdf_url IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS cse_latest_prices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES cse_companies(id) ON DELETE SET NULL,
+  security_id UUID REFERENCES cse_securities(id) ON DELETE SET NULL,
+  symbol VARCHAR(30) NOT NULL UNIQUE,
+  last_traded_price NUMERIC(18, 4),
+  change_amount NUMERIC(18, 4),
+  change_percent NUMERIC(12, 6),
+  previous_close NUMERIC(18, 4),
+  open_price NUMERIC(18, 4),
+  high_price NUMERIC(18, 4),
+  low_price NUMERIC(18, 4),
+  turnover NUMERIC(24, 4),
+  share_volume BIGINT,
+  trade_volume BIGINT,
+  market_cap NUMERIC(24, 4),
+  market_status TEXT,
+  trade_time TIMESTAMPTZ,
+  source TEXT NOT NULL DEFAULT 'CSE_TODAY_SHARE_PRICE',
+  raw_payload_hash TEXT,
+  raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cse_price_snapshots (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES cse_companies(id) ON DELETE SET NULL,
+  security_id UUID REFERENCES cse_securities(id) ON DELETE SET NULL,
+  symbol VARCHAR(30) NOT NULL,
+  last_traded_price NUMERIC(18, 4),
+  change_amount NUMERIC(18, 4),
+  change_percent NUMERIC(12, 6),
+  turnover NUMERIC(24, 4),
+  share_volume BIGINT,
+  trade_volume BIGINT,
+  market_status TEXT,
+  snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  source TEXT NOT NULL DEFAULT 'CSE_TODAY_SHARE_PRICE',
+  raw_payload_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cse_company_import_symbol_results (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  run_id UUID REFERENCES cse_fetch_runs(id) ON DELETE CASCADE,
+  symbol VARCHAR(30) NOT NULL,
+  import_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  profile_status TEXT,
+  financial_reports_status TEXT,
+  announcements_status TEXT,
+  latest_price_status TEXT,
+  records_found INTEGER NOT NULL DEFAULT 0,
+  documents_discovered INTEGER NOT NULL DEFAULT 0,
+  announcements_discovered INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT,
+  warnings_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT cse_company_import_symbol_results_unique UNIQUE (run_id, symbol, import_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cse_company_profiles_company_id ON cse_company_profiles(company_id);
+CREATE INDEX IF NOT EXISTS idx_cse_company_profiles_security_id ON cse_company_profiles(security_id);
+CREATE INDEX IF NOT EXISTS idx_cse_company_profile_snapshots_symbol ON cse_company_profile_snapshots(symbol, fetched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_company_people_symbol ON cse_company_people(symbol);
+CREATE INDEX IF NOT EXISTS idx_cse_company_financial_reports_symbol ON cse_company_financial_reports(symbol, published_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_company_announcements_symbol_date ON cse_company_announcements(symbol, published_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_latest_prices_updated_at ON cse_latest_prices(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_price_snapshots_symbol_time ON cse_price_snapshots(symbol, snapshot_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_company_import_symbol_results_run ON cse_company_import_symbol_results(run_id, import_type);
+
+DROP TRIGGER IF EXISTS cse_company_profiles_set_updated_at ON cse_company_profiles;
+CREATE TRIGGER cse_company_profiles_set_updated_at
+BEFORE UPDATE ON cse_company_profiles
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS cse_company_people_set_updated_at ON cse_company_people;
+CREATE TRIGGER cse_company_people_set_updated_at
+BEFORE UPDATE ON cse_company_people
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS cse_company_financial_reports_set_updated_at ON cse_company_financial_reports;
+CREATE TRIGGER cse_company_financial_reports_set_updated_at
+BEFORE UPDATE ON cse_company_financial_reports
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS cse_company_announcements_set_updated_at ON cse_company_announcements;
+CREATE TRIGGER cse_company_announcements_set_updated_at
+BEFORE UPDATE ON cse_company_announcements
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS cse_latest_prices_set_updated_at ON cse_latest_prices;
+CREATE TRIGGER cse_latest_prices_set_updated_at
+BEFORE UPDATE ON cse_latest_prices
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- CSE Company Intelligence final operations support
+ALTER TABLE cse_fetch_runs ADD COLUMN IF NOT EXISTS parent_run_id UUID REFERENCES cse_fetch_runs(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_cse_fetch_runs_parent_run_id ON cse_fetch_runs(parent_run_id);
+
+CREATE TABLE IF NOT EXISTS cse_market_status_snapshots (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  status TEXT,
+  is_open BOOLEAN,
+  source TEXT NOT NULL DEFAULT 'CSE_MARKET_STATUS_API',
+  raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cse_market_status_snapshots_checked_at ON cse_market_status_snapshots(checked_at DESC);

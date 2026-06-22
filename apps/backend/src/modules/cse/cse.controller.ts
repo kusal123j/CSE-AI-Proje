@@ -3,6 +3,7 @@ import { ok } from '../../utils/apiResponse';
 import { AppError } from '../../middleware/errorHandler';
 import { cseService } from './cse.service';
 import { cseAnalyticsService } from './cse.analytics.service';
+import { cseCompanyIntelligenceService } from './cse.companyIntelligence.service';
 import { findFetchRun, gicsDashboard, listFetchRuns, listGicsClassifications, listGicsGroups, listGicsIndices, listGicsSummary, listGicsUnmapped } from './cse.repository';
 
 function page(req: Request) {
@@ -134,6 +135,168 @@ export const cseController = {
 
   async marketBreadth(req: Request, res: Response) {
     return ok(res, await cseAnalyticsService.marketBreadth({ date: String(req.query.date || '') }));
+  },
+
+
+  async runCompanyProfilesImport(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.startCompanyProfilesImport({
+        symbol: typeof req.body?.symbol === 'string' ? req.body.symbol : undefined,
+        limit: req.body?.limit ? Number(req.body.limit) : undefined,
+        triggerType: 'manual'
+      }),
+      202
+    );
+  },
+
+  async runCompanyProfileImportForSymbol(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.startCompanyProfilesImport({ symbol: req.params.symbol, triggerType: 'manual' }), 202);
+  },
+
+  async runCompanyFinancialsImport(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.startFinancialReportsImport({
+        symbol: typeof req.body?.symbol === 'string' ? req.body.symbol : undefined,
+        limit: req.body?.limit ? Number(req.body.limit) : undefined,
+        triggerType: 'manual'
+      }),
+      202
+    );
+  },
+
+  async runCompanyFinancialsImportForSymbol(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.startFinancialReportsImport({ symbol: req.params.symbol, triggerType: 'manual' }), 202);
+  },
+
+  async runCompanyAnnouncementsImport(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.startAnnouncementsImport({
+        symbol: typeof req.body?.symbol === 'string' ? req.body.symbol : undefined,
+        startDate: typeof req.body?.startDate === 'string' ? req.body.startDate : undefined,
+        endDate: typeof req.body?.endDate === 'string' ? req.body.endDate : undefined,
+        limit: req.body?.limit ? Number(req.body.limit) : undefined,
+        triggerType: 'manual'
+      }),
+      202
+    );
+  },
+
+  async runCompanyAnnouncementsImportForSymbol(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.startAnnouncementsImport({
+        symbol: req.params.symbol,
+        startDate: typeof req.body?.startDate === 'string' ? req.body.startDate : undefined,
+        endDate: typeof req.body?.endDate === 'string' ? req.body.endDate : undefined,
+        triggerType: 'manual'
+      }),
+      202
+    );
+  },
+
+  async runLatestPricesImport(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.startLatestPricesImport({ insertSnapshot: req.body?.insertSnapshot !== false, triggerType: 'manual' }), 202);
+  },
+
+  async listCompanyProfiles(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.listCompanyProfiles({ limit: limit(req), search: String(req.query.search ?? '') }));
+  },
+
+  async getCompanyProfile(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.getCompanyIntelligence(req.params.symbol));
+  },
+
+  async listCompanyFinancialReports(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.listFinancialReports(req.params.symbol));
+  },
+
+  async listCompanyAnnouncements(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.listAnnouncements(req.params.symbol, {
+        startDate: typeof req.query.startDate === 'string' ? req.query.startDate : undefined,
+        endDate: typeof req.query.endDate === 'string' ? req.query.endDate : undefined
+      })
+    );
+  },
+
+
+  async listAllCompanyFinancialReports(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.listAllFinancialReports({
+        symbol: typeof req.query.symbol === 'string' ? req.query.symbol : undefined,
+        reportType: typeof req.query.reportType === 'string' ? req.query.reportType : undefined,
+        financialYear: typeof req.query.financialYear === 'string' ? req.query.financialYear : undefined,
+        documentStatus: typeof req.query.documentStatus === 'string' ? req.query.documentStatus : undefined,
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        limit: limit(req)
+      })
+    );
+  },
+
+  async listAllCompanyAnnouncements(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.listAllAnnouncements({
+        symbol: typeof req.query.symbol === 'string' ? req.query.symbol : undefined,
+        startDate: typeof req.query.startDate === 'string' ? req.query.startDate : undefined,
+        endDate: typeof req.query.endDate === 'string' ? req.query.endDate : undefined,
+        category: typeof req.query.category === 'string' ? req.query.category : undefined,
+        documentStatus: typeof req.query.documentStatus === 'string' ? req.query.documentStatus : undefined,
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        limit: limit(req)
+      })
+    );
+  },
+
+  async getCompanyLatestPrice(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.getLatestPrice(req.params.symbol));
+  },
+
+  async listLatestPrices(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.listLatestPrices({ limit: limit(req), search: String(req.query.search ?? '') }));
+  },
+
+  async latestMarketStatus(_req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.latestMarketStatus());
+  },
+
+  async importRunSymbolResults(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.listImportRunSymbolResults(req.params.id, {
+        status: typeof req.query.status === 'string' ? req.query.status : undefined,
+        importType: typeof req.query.importType === 'string' ? (req.query.importType as never) : undefined,
+        symbol: typeof req.query.symbol === 'string' ? req.query.symbol : undefined,
+        limit: limit(req),
+        offset: req.query.offset ? Number(req.query.offset) : undefined
+      })
+    );
+  },
+
+  async retryFailedImportSymbols(req: Request, res: Response) {
+    return ok(
+      res,
+      await cseCompanyIntelligenceService.retryFailedSymbols(req.params.id, {
+        importType: req.body?.importType,
+        startDate: typeof req.body?.startDate === 'string' ? req.body.startDate : undefined,
+        endDate: typeof req.body?.endDate === 'string' ? req.body.endDate : undefined,
+        limit: req.body?.limit ? Number(req.body.limit) : undefined
+      }),
+      202
+    );
+  },
+
+  async retryFinancialReportDocument(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.retryFinancialReportDocument(req.params.id), 202);
+  },
+
+  async retryAnnouncementDocument(req: Request, res: Response) {
+    return ok(res, await cseCompanyIntelligenceService.retryAnnouncementDocument(req.params.id), 202);
   },
 
   async gicsDashboard(_req: Request, res: Response) {

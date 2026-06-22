@@ -1,52 +1,69 @@
-# Test Results — Final Full Project Package
+# Test Results - Full Project Package
 
-## Python worker parser tests
+Generated for the full-project ZIP after applying the final CSE Company Intelligence package to the original uploaded project.
+
+## Python worker
+
+Command:
 
 ```bash
-python3 -m pytest apps/python-worker/tests/test_cse_daily_market_summary_importer.py -q
+cd apps/python-worker
+python3 -m compileall -q app tests scripts
+pytest -q
 ```
 
 Result:
 
 ```text
-4 passed in 0.48s
+36 passed in 4.07s
 ```
 
-## Python compile check
+## Backend TypeScript
+
+Command:
 
 ```bash
-python3 -m py_compile apps/python-worker/app/cse_daily_market_summary_importer.py apps/python-worker/app/main.py
+cd apps/backend
+npm ci --silent
+npm run typecheck
 ```
 
-Result: passed.
-
-## Backend TypeScript build
-
-```bash
-npm --prefix apps/backend run build
-```
-
-Sandbox result: not completed because dependencies are not installed.
+Result:
 
 ```text
-error TS2688: Cannot find type definition file for 'node'.
+PASS
 ```
 
-## Mega Panel build
+## Backend tests
+
+Command used with local test environment variables:
 
 ```bash
-npm --prefix apps/mega-panel run build
+cd apps/backend
+DATABASE_URL='postgresql://user:pass@localhost:5432/testdb' \
+QDRANT_URL='http://localhost:6333' \
+REDIS_URL='redis://localhost:6379' \
+MINIO_ENDPOINT='localhost' \
+MINIO_ACCESS_KEY='test' \
+MINIO_SECRET_KEY='testtest' \
+MINIO_BUCKET='cse-documents' \
+JWT_SECRET='test-secret' \
+PYTHON_WORKER_URL='http://localhost:8001' \
+npm test -- --test-reporter=dot
 ```
 
-Sandbox result: not completed because dependencies are not installed.
+Result:
 
 ```text
-sh: 1: next: not found
+56 passed, 1 failed
 ```
 
-## Summary
+The remaining failed backend test is the pre-existing unrelated Daily Market Summary string/regex test. It was intentionally not modified because this package must not touch unrelated project areas.
 
-- Daily Market Summary Python tests: passed
-- Daily Market Summary Python compile: passed
-- Backend build: needs local/Docker dependency install
-- Mega Panel build: needs local/Docker dependency install
+## Final review blocker fixed
+
+The previous final package had a Python test failure because the live endpoint verifier script contained browser product names in its docstring. This full package removes those terms from the verifier script docstring while keeping the implementation browser-automation-free. The Python tests now pass.
+
+## Mega Panel
+
+Mega Panel source files are included. Independent typecheck could not be fully confirmed in this sandbox because the Next dependency install/type resolution did not complete cleanly here. No generated dependency folders are included in the ZIP.

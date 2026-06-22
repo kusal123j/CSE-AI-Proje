@@ -11,6 +11,10 @@ from .cse_http_importer import CseImportError, run_http_import
 from .cse_trade_summary_importer import run_trade_summary_import
 from .cse_gics_importer import run_gics_import
 from .cse_daily_market_summary_importer import CseDailyMarketSummaryImportError, run_daily_market_summary_import
+from .cse_company_profile_importer import run_company_profile_import
+from .cse_financial_reports_importer import run_financial_reports_import
+from .cse_announcements_importer import run_announcements_import
+from .cse_latest_price_importer import run_latest_prices_import
 
 app = FastAPI(title="CSE Python Worker", version="0.2.0")
 
@@ -132,6 +136,87 @@ def cse_import_gics(payload: CseGicsImportRequest):
                 "sourceUrl": classification_url,
                 "runId": payload.run_id,
             },
+        ) from exc
+
+
+
+class CseCompanyProfileImportRequest(BaseModel):
+    symbol: str
+    source_url: str = Field(alias="sourceUrl")
+    api_url: str = Field(alias="apiUrl")
+
+    class Config:
+        populate_by_name = True
+
+
+class CseCompanyFinancialsImportRequest(BaseModel):
+    symbol: str
+    api_url: str = Field(alias="apiUrl")
+
+    class Config:
+        populate_by_name = True
+
+
+class CseCompanyAnnouncementsImportRequest(BaseModel):
+    symbol: str
+    start_date: str = Field(alias="startDate")
+    end_date: str = Field(alias="endDate")
+    api_url: str = Field(alias="apiUrl")
+
+    class Config:
+        populate_by_name = True
+
+
+class CseLatestPricesImportRequest(BaseModel):
+    api_url: str = Field(alias="apiUrl")
+    market_status_url: str | None = Field(default=None, alias="marketStatusUrl")
+    skip_when_market_closed: bool = Field(default=False, alias="skipWhenMarketClosed")
+
+    class Config:
+        populate_by_name = True
+
+
+@app.post("/cse/import/company-profile")
+def cse_import_company_profile(payload: CseCompanyProfileImportRequest):
+    try:
+        return run_company_profile_import(payload.symbol, payload.source_url, payload.api_url)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"status": "failed", "errorCode": exc.__class__.__name__, "message": str(exc), "symbol": payload.symbol},
+        ) from exc
+
+
+@app.post("/cse/import/company-financials")
+def cse_import_company_financials(payload: CseCompanyFinancialsImportRequest):
+    try:
+        return run_financial_reports_import(payload.symbol, payload.api_url)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"status": "failed", "errorCode": exc.__class__.__name__, "message": str(exc), "symbol": payload.symbol},
+        ) from exc
+
+
+@app.post("/cse/import/company-announcements")
+def cse_import_company_announcements(payload: CseCompanyAnnouncementsImportRequest):
+    try:
+        return run_announcements_import(payload.symbol, payload.start_date, payload.end_date, payload.api_url)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"status": "failed", "errorCode": exc.__class__.__name__, "message": str(exc), "symbol": payload.symbol},
+        ) from exc
+
+
+@app.post("/cse/import/latest-prices")
+def cse_import_latest_prices(payload: CseLatestPricesImportRequest):
+    try:
+        return run_latest_prices_import(payload.api_url, payload.market_status_url, payload.skip_when_market_closed)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"status": "failed", "errorCode": exc.__class__.__name__, "message": str(exc)},
         ) from exc
 
 

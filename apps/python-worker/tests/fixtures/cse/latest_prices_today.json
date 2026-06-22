@@ -1,0 +1,5 @@
+{
+  "reqData": [
+    { "symbol": "AFSL.N0000", "lastTradedPrice": "100.25", "change": "0.25", "changePercentage": "0.25", "turnover": "125000.50", "shareVolume": "1000", "tradeVolume": "7" }
+  ]
+}

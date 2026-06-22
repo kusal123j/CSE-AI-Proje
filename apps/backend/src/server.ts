@@ -7,7 +7,7 @@ import { ensureQdrantCollection } from './config/qdrant';
 import { runMigrations } from './database/migrate';
 import { startDocumentDownloadWorker } from './queues/documentDownload.queue';
 import { startPdfExtractWorker } from './queues/pdfExtract.queue';
-import { startCseAlphabeticalScheduler, startCseDailyMarketSummaryScheduler, startCseTradeSummaryScheduler } from './modules/cse/cse.scheduler';
+import { startCseAlphabeticalScheduler, startCseCompanyAnnouncementsScheduler, startCseCompanyFinancialReportsScheduler, startCseCompanyProfileScheduler, startCseDailyMarketSummaryScheduler, startCseLatestPriceScheduler, startCseTradeSummaryScheduler } from './modules/cse/cse.scheduler';
 
 async function bootstrap() {
   if (env.RUN_MIGRATIONS_ON_START) {
@@ -28,6 +28,10 @@ async function bootstrap() {
   const cseScheduler = startCseAlphabeticalScheduler();
   const cseTradeSummaryScheduler = startCseTradeSummaryScheduler();
   const cseDailyMarketSummaryScheduler = startCseDailyMarketSummaryScheduler();
+  const cseLatestPriceScheduler = startCseLatestPriceScheduler();
+  const cseCompanyProfileScheduler = startCseCompanyProfileScheduler();
+  const cseCompanyFinancialReportsScheduler = startCseCompanyFinancialReportsScheduler();
+  const cseCompanyAnnouncementsScheduler = startCseCompanyAnnouncementsScheduler();
 
   async function shutdown(signal: string) {
     logger.info({ signal }, 'Shutting down backend');
@@ -35,6 +39,10 @@ async function bootstrap() {
     cseScheduler?.stop();
     cseTradeSummaryScheduler?.stop();
     cseDailyMarketSummaryScheduler?.stop();
+    cseLatestPriceScheduler?.stop();
+    cseCompanyProfileScheduler?.stop();
+    cseCompanyFinancialReportsScheduler?.stop();
+    cseCompanyAnnouncementsScheduler?.stop();
     await Promise.all(workers.map((worker) => worker.close()));
     await closeDatabase();
     process.exit(0);

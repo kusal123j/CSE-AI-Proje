@@ -104,6 +104,40 @@ export const envSchema = z.object({
   CSE_GICS_MIN_EXPECTED_GROUPS: z.coerce.number().positive().default(20),
   CSE_GICS_MIN_EXPECTED_CLASSIFICATION_ROWS: z.coerce.number().positive().default(250),
   CSE_GICS_TIMEOUT_SECONDS: z.coerce.number().positive().default(120),
+
+  CSE_COMPANY_PROFILE_ENABLED: booleanFromEnv.default(true),
+  CSE_COMPANY_PROFILE_SOURCE_URL: z.string().url().default('https://www.cse.lk/company-profile'),
+  CSE_COMPANY_PROFILE_API_URL: z.string().url().default('https://www.cse.lk/api/companyInfoSummery'),
+  CSE_COMPANY_PROFILE_TIMEOUT_SECONDS: z.coerce.number().positive().default(90),
+  CSE_COMPANY_PROFILE_SCHEDULER_ENABLED: booleanFromEnv.default(false),
+  CSE_COMPANY_PROFILE_REFRESH_HOURS: z.coerce.number().positive().default(6),
+
+  CSE_COMPANY_FINANCIAL_REPORTS_ENABLED: booleanFromEnv.default(true),
+  CSE_COMPANY_FINANCIAL_REPORTS_API_URL: z.string().url().default('https://www.cse.lk/api/getFinancialAnnouncement'),
+  CSE_COMPANY_FINANCIAL_REPORTS_TIMEOUT_SECONDS: z.coerce.number().positive().default(120),
+  CSE_COMPANY_FINANCIAL_REPORTS_SCHEDULER_ENABLED: booleanFromEnv.default(false),
+  CSE_COMPANY_FINANCIAL_REPORTS_HOUR: z.coerce.number().min(0).max(23).default(18),
+  CSE_COMPANY_FINANCIAL_REPORTS_MINUTE: z.coerce.number().min(0).max(59).default(0),
+  CSE_COMPANY_FINANCIAL_REPORTS_WEEKDAYS_ONLY: booleanFromEnv.default(true),
+
+  CSE_COMPANY_ANNOUNCEMENTS_ENABLED: booleanFromEnv.default(true),
+  CSE_COMPANY_ANNOUNCEMENTS_API_URL: z.string().url().default('https://www.cse.lk/api/approvedAnnouncement'),
+  CSE_COMPANY_ANNOUNCEMENTS_TIMEOUT_SECONDS: z.coerce.number().positive().default(120),
+  CSE_COMPANY_ANNOUNCEMENTS_SCHEDULER_ENABLED: booleanFromEnv.default(false),
+  CSE_COMPANY_ANNOUNCEMENTS_HOUR: z.coerce.number().min(0).max(23).default(18),
+  CSE_COMPANY_ANNOUNCEMENTS_MINUTE: z.coerce.number().min(0).max(59).default(30),
+  CSE_COMPANY_ANNOUNCEMENTS_WEEKDAYS_ONLY: booleanFromEnv.default(true),
+  CSE_COMPANY_ANNOUNCEMENTS_LOOKBACK_DAYS: z.coerce.number().positive().default(7),
+
+  CSE_LATEST_PRICE_POLLER_ENABLED: booleanFromEnv.default(false),
+  CSE_LATEST_PRICE_API_URL: z.string().url().default('https://www.cse.lk/api/todaySharePrice'),
+  CSE_MARKET_STATUS_API_URL: z.string().url().default('https://www.cse.lk/api/marketStatus'),
+  CSE_LATEST_PRICE_TIMEOUT_SECONDS: z.coerce.number().positive().default(60),
+  CSE_LATEST_PRICE_POLL_INTERVAL_MS: z.coerce.number().positive().default(180000),
+  CSE_LATEST_PRICE_WEEKDAYS_ONLY: booleanFromEnv.default(true),
+  CSE_MARKET_OPEN_TIME: z.string().default('10:30'),
+  CSE_MARKET_CLOSE_TIME: z.string().default('14:30'),
+
   CSE_GICS_SCHEDULER_ENABLED: booleanFromEnv.default(false),
 });
 

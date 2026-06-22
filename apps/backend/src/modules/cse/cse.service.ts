@@ -821,6 +821,48 @@ export const cseService = {
         timeoutSeconds: env.CSE_DAILY_MARKET_SUMMARY_TIMEOUT_SECONDS,
         artifactStorageDir: env.CSE_DAILY_MARKET_SUMMARY_ARTIFACT_STORAGE_DIR
       },
+
+      companyIntelligence: {
+        companyProfile: {
+          enabled: env.CSE_COMPANY_PROFILE_ENABLED,
+          source: 'CSE_COMPANY_PROFILE',
+          sourceUrl: env.CSE_COMPANY_PROFILE_SOURCE_URL,
+          apiUrl: env.CSE_COMPANY_PROFILE_API_URL,
+          refreshHours: env.CSE_COMPANY_PROFILE_REFRESH_HOURS,
+          schedulerEnabled: env.CSE_COMPANY_PROFILE_SCHEDULER_ENABLED,
+          browserAutomationEnabled: false,
+          playwrightEnabled: false
+        },
+        financialReports: {
+          enabled: env.CSE_COMPANY_FINANCIAL_REPORTS_ENABLED,
+          source: 'CSE_COMPANY_FINANCIAL_REPORTS',
+          apiUrl: env.CSE_COMPANY_FINANCIAL_REPORTS_API_URL,
+          schedulerEnabled: env.CSE_COMPANY_FINANCIAL_REPORTS_SCHEDULER_ENABLED,
+          browserAutomationEnabled: false,
+          playwrightEnabled: false
+        },
+        announcements: {
+          enabled: env.CSE_COMPANY_ANNOUNCEMENTS_ENABLED,
+          source: 'CSE_COMPANY_ANNOUNCEMENTS',
+          apiUrl: env.CSE_COMPANY_ANNOUNCEMENTS_API_URL,
+          defaultLookbackDays: env.CSE_COMPANY_ANNOUNCEMENTS_LOOKBACK_DAYS,
+          schedulerEnabled: env.CSE_COMPANY_ANNOUNCEMENTS_SCHEDULER_ENABLED,
+          browserAutomationEnabled: false,
+          playwrightEnabled: false
+        },
+        latestPrices: {
+          enabled: env.CSE_LATEST_PRICE_POLLER_ENABLED,
+          source: 'CSE_LATEST_PRICES',
+          apiUrl: env.CSE_LATEST_PRICE_API_URL,
+          marketStatusUrl: env.CSE_MARKET_STATUS_API_URL,
+          pollIntervalMs: env.CSE_LATEST_PRICE_POLL_INTERVAL_MS,
+          weekdaysOnly: env.CSE_LATEST_PRICE_WEEKDAYS_ONLY,
+          marketOpenTime: env.CSE_MARKET_OPEN_TIME,
+          marketCloseTime: env.CSE_MARKET_CLOSE_TIME,
+          browserAutomationEnabled: false,
+          playwrightEnabled: false
+        }
+      },
       gics: {
         enabled: env.CSE_GICS_ENABLED,
         source: 'CSE_GICS',

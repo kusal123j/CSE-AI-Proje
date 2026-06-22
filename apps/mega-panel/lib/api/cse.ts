@@ -147,3 +147,88 @@ export function getLatestDailyMarketSummary() {
 export function getDailyMarketSummaryHistory(params?: Pick<ListParams, 'limit'> & { from?: string; to?: string }) {
   return apiFetch<CseDailyMarketSummary[]>(`daily-market-summary/history${toQueryString(params)}`);
 }
+
+export function runCompanyProfilesImport(input?: { symbol?: string; limit?: number }) {
+  return panelFetch<unknown>('/api/cse/import/company-profiles/run', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {})
+  });
+}
+
+export function runCompanyFinancialsImport(input?: { symbol?: string; limit?: number }) {
+  return panelFetch<unknown>('/api/cse/import/company-financials/run', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {})
+  });
+}
+
+export function runCompanyAnnouncementsImport(input?: { symbol?: string; startDate?: string; endDate?: string; limit?: number }) {
+  return panelFetch<unknown>('/api/cse/import/company-announcements/run', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {})
+  });
+}
+
+export function runLatestPricesImport(input?: { insertSnapshot?: boolean }) {
+  return panelFetch<unknown>('/api/cse/import/latest-prices/run', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {})
+  });
+}
+
+export function getCompanyProfiles(params?: Pick<ListParams, 'limit' | 'search'>) {
+  return apiFetch<import('@/lib/types/cse').CseCompanyProfileRow[]>(`company-profiles${toQueryString(params)}`);
+}
+
+export function getCompanyProfileDetail(symbol: string) {
+  return apiFetch<import('@/lib/types/cse').CseCompanyProfileDetail>(`company-profiles/${encodeURIComponent(symbol)}`);
+}
+
+export function getCompanyFinancialReports(symbol: string) {
+  return apiFetch<import('@/lib/types/cse').CseCompanyFinancialReport[]>(`company-profiles/${encodeURIComponent(symbol)}/financial-reports`);
+}
+
+export function getAllCompanyFinancialReports(params?: { symbol?: string; reportType?: string; financialYear?: string; documentStatus?: string; search?: string; limit?: number }) {
+  return apiFetch<import('@/lib/types/cse').CseCompanyFinancialReport[]>(`company-financial-reports${toQueryString(params)}`);
+}
+
+export function getCompanyAnnouncements(symbol: string, params?: { startDate?: string; endDate?: string }) {
+  return apiFetch<import('@/lib/types/cse').CseCompanyAnnouncement[]>(`company-profiles/${encodeURIComponent(symbol)}/announcements${toQueryString(params)}`);
+}
+
+export function getAllCompanyAnnouncements(params?: { symbol?: string; startDate?: string; endDate?: string; category?: string; documentStatus?: string; search?: string; limit?: number }) {
+  return apiFetch<import('@/lib/types/cse').CseCompanyAnnouncement[]>(`company-announcements${toQueryString(params)}`);
+}
+
+export function getLatestPrices(params?: Pick<ListParams, 'limit' | 'search'>) {
+  return apiFetch<import('@/lib/types/cse').CseLatestPrice[]>(`latest-prices${toQueryString(params)}`);
+}
+
+export function getImportRunSymbolResults(runId: string, params?: { status?: string; importType?: string; symbol?: string; limit?: number; offset?: number }) {
+  return apiFetch<import('@/lib/types/cse').CseImportRunSymbolResultsResponse>(`import/runs/${encodeURIComponent(runId)}/symbol-results${toQueryString(params)}`);
+}
+
+export function retryFailedImportSymbols(runId: string, input: { importType: string; startDate?: string; endDate?: string; limit?: number }) {
+  return panelFetch<unknown>(`/api/cse/import/runs/${encodeURIComponent(runId)}/retry-failed`, {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export function retryFinancialReportDocument(reportId: string) {
+  return panelFetch<unknown>(`/api/cse/company-financial-reports/${encodeURIComponent(reportId)}/retry-document`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+}
+
+export function retryAnnouncementDocument(announcementId: string) {
+  return panelFetch<unknown>(`/api/cse/company-announcements/${encodeURIComponent(announcementId)}/retry-document`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+}
+
+export function getLatestPriceMarketStatus() {
+  return apiFetch<import('@/lib/types/cse').CseMarketStatusSnapshot | null>('latest-prices-market-status');
+}
