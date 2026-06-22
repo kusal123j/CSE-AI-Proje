@@ -392,11 +392,16 @@ export interface CseCompanyFinancialReport {
   period?: string | null;
   published_date?: string | null;
   pdf_url?: string | null;
+  original_pdf_url?: string | null;
+  source_url?: string | null;
   document_id?: string | null;
   download_status?: string | null;
   extract_status?: string | null;
+  auto_download_eligible?: boolean | string | null;
+  auto_download_reason?: string | null;
   company_name?: string | null;
   document_status?: string | null;
+  document_error?: string | null;
 }
 
 export interface CseCompanyAnnouncement {
@@ -407,9 +412,14 @@ export interface CseCompanyAnnouncement {
   published_at?: string | null;
   published_date?: string | null;
   pdf_url?: string | null;
+  original_pdf_url?: string | null;
+  source_url?: string | null;
   document_id?: string | null;
+  auto_download_eligible?: boolean | string | null;
+  auto_download_reason?: string | null;
   company_name?: string | null;
   document_status?: string | null;
+  document_error?: string | null;
 }
 
 export interface CseLatestPrice {

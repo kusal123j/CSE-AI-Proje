@@ -16,6 +16,31 @@ function text(value: unknown) {
   return value === null || value === undefined || value === '' ? '—' : String(value);
 }
 
+function yesNo(value: unknown) {
+  if (value === true || value === 'true') return 'Yes';
+  if (value === false || value === 'false') return 'No';
+  return text(value);
+}
+
+function PdfLink({ href, label }: { href?: string | null; label: string }) {
+  return href ? (
+    <a
+      className="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title={href}
+    >
+      {label}
+    </a>
+  ) : <>—</>;
+}
+
+function ShortText({ value, className = '' }: { value?: unknown; className?: string }) {
+  const rendered = text(value);
+  return <span className={`block max-w-xs truncate ${className}`} title={rendered}>{rendered}</span>;
+}
+
 export default function CompanyAnnouncementsPage() {
   const [symbol, setSymbol] = useState('');
   const [startDate, setStartDate] = useState('2024-01-01');
@@ -76,8 +101,8 @@ export default function CompanyAnnouncementsPage() {
       {announcements.loading ? <Skeleton className="h-96" /> : announcements.error ? <BackendMissingState error={announcements.error} expectedEndpoint="GET /api/cse/company-announcements" /> : (
         <TableContainer>
           <Table>
-            <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Symbol</th><th className="px-4 py-3">Company</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Published</th><th className="px-4 py-3">Document</th><th className="px-4 py-3">PDF</th><th className="px-4 py-3">Actions</th></tr></thead>
-            <tbody className="divide-y divide-border">{(announcements.data ?? []).map((item) => <tr key={item.id}><td className="px-4 py-3 font-semibold text-primary"><Link href={`/company-profiles/${encodeURIComponent(item.symbol)}`}>{item.symbol}</Link></td><td className="px-4 py-3">{text(item.company_name)}</td><td className="px-4 py-3 max-w-xl">{text(item.announcement_title)}</td><td className="px-4 py-3">{text(item.announcement_category)}</td><td className="px-4 py-3">{text(item.published_date ?? item.published_at)}</td><td className="px-4 py-3">{item.document_id ? text(item.document_status ?? 'DISCOVERED') : 'No PDF'}</td><td className="px-4 py-3">{item.pdf_url ? <a className="text-primary underline" href={item.pdf_url} target="_blank" rel="noreferrer">Open</a> : '—'}</td><td className="px-4 py-3"><Button variant="secondary" onClick={() => retryDocument(item.id)} disabled={!item.pdf_url}>Retry PDF</Button></td></tr>)}</tbody>
+            <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Symbol</th><th className="px-4 py-3">Company</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Published</th><th className="px-4 py-3">Auto</th><th className="px-4 py-3">Document</th><th className="px-4 py-3">URLs</th><th className="px-4 py-3">Error</th><th className="px-4 py-3">Actions</th></tr></thead>
+            <tbody className="divide-y divide-border">{(announcements.data ?? []).map((item) => <tr key={item.id}><td className="px-4 py-3 font-semibold text-primary"><Link href={`/company-profiles/${encodeURIComponent(item.symbol)}`}>{item.symbol}</Link></td><td className="px-4 py-3">{text(item.company_name)}</td><td className="px-4 py-3 max-w-xl">{text(item.announcement_title)}</td><td className="px-4 py-3">{text(item.announcement_category)}</td><td className="px-4 py-3">{text(item.published_date ?? item.published_at)}</td><td className="px-4 py-3"><div className="font-medium">{yesNo(item.auto_download_eligible)}</div><ShortText value={item.auto_download_reason} className="text-xs text-muted-foreground" /></td><td className="px-4 py-3">{item.document_id ? text(item.document_status ?? 'DISCOVERED') : 'Metadata only'}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><PdfLink href={item.original_pdf_url} label="Original" /><PdfLink href={item.pdf_url} label="CDN PDF" /></div></td><td className="px-4 py-3 text-xs text-destructive"><ShortText value={item.document_error} /></td><td className="px-4 py-3"><Button variant="secondary" onClick={() => retryDocument(item.id)} disabled={!item.pdf_url && !item.original_pdf_url}>Retry PDF</Button></td></tr>)}</tbody>
           </Table>
         </TableContainer>
       )}

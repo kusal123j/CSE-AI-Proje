@@ -111,17 +111,62 @@ export function assertCseMarketStatusApiUrl(sourceUrl: string): void {
   assertCseApiPath(sourceUrl, '/api/marketStatus', 'Market Status importer');
 }
 
-export function assertCsePdfUrl(sourceUrl: string): void {
-  let parsed: URL;
+const CSE_ALLOWED_PDF_HOSTS = new Set(['www.cse.lk', 'cse.lk', 'cdn.cse.lk']);
+
+function parseCsePdfUrl(input: string): URL | null {
+  const trimmed = input.trim();
+  if (!trimmed || /^(javascript|data):/i.test(trimmed)) return null;
   try {
-    parsed = new URL(sourceUrl);
+    return new URL(trimmed);
   } catch {
-    throw new AppError(400, 'Invalid CSE PDF URL');
+    try {
+      return new URL(trimmed.startsWith('/') ? trimmed : `/${trimmed}`, 'https://www.cse.lk');
+    } catch {
+      return null;
+    }
   }
-  if (!['www.cse.lk', 'cse.lk', 'cdn.cse.lk'].includes(parsed.hostname)) {
-    throw new AppError(400, 'Only CSE/CDN PDF URLs are allowed');
+}
+
+export function normalizeCsePdfUrl(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const parsed = parseCsePdfUrl(input);
+  if (!parsed) return null;
+
+  const host = parsed.hostname.toLowerCase();
+  if (!CSE_ALLOWED_PDF_HOSTS.has(host)) return null;
+
+  let pathname = parsed.pathname.replace(/\\/g, '/');
+  pathname = pathname.replace(/^\/api\/cmt\//i, '/cmt/');
+  if (!pathname.startsWith('/')) pathname = `/${pathname}`;
+
+  if (!pathname.toLowerCase().endsWith('.pdf')) return null;
+  if (!pathname.toLowerCase().includes('/cmt/upload_report_file/')) return null;
+
+  const encodedPath = pathname
+    .split('/')
+    .map((part) => {
+      try {
+        return encodeURIComponent(decodeURIComponent(part));
+      } catch {
+        return encodeURIComponent(part);
+      }
+    })
+    .join('/');
+  return `https://cdn.cse.lk${encodedPath}`;
+}
+
+export function isAllowedCsePdfUrl(input: string | null | undefined): boolean {
+  return Boolean(normalizeCsePdfUrl(input));
+}
+
+export function assertAllowedCsePdfUrl(input: string): string {
+  const normalized = normalizeCsePdfUrl(input);
+  if (!normalized) {
+    throw new AppError(400, 'Only CSE CDN upload_report_file PDF URLs are allowed');
   }
-  if (!parsed.pathname.toLowerCase().endsWith('.pdf')) {
-    throw new AppError(400, 'Only PDF URLs are allowed for CSE report/announcement documents');
-  }
+  return normalized;
+}
+
+export function assertCsePdfUrl(sourceUrl: string): void {
+  assertAllowedCsePdfUrl(sourceUrl);
 }

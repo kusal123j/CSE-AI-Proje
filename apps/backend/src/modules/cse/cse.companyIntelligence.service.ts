@@ -19,7 +19,7 @@ import {
   CseRetryFailedSymbolsInput
 } from './cse.companyIntelligence.types';
 import * as repo from './cse.companyIntelligence.repository';
-import { assertCsePdfUrl } from './cse.sourceGuard';
+import { normalizeCsePdfUrl } from './cse.sourceGuard';
 
 let inProcessCompanyProfiles = false;
 let inProcessFinancialReports = false;
@@ -54,6 +54,49 @@ function marketStatusIsOpen(status?: string | null): boolean | null {
   if (/(open|continuous|trading|pre-open|pre open)/.test(normalized) && !/(closed|close)/.test(normalized)) return true;
   if (/(closed|close|halted|holiday|not\s+open)/.test(normalized)) return false;
   return null;
+}
+
+
+export interface FinancialAutoDownloadCandidate {
+  id: string;
+  reportType: string;
+  publishedDate?: string | null;
+  financialYear?: string | null;
+  period?: string | null;
+  createdAt?: string | null;
+}
+
+export function selectAutoDownloadFinancialReportsForSymbol<T extends FinancialAutoDownloadCandidate>(reports: T[]) {
+  const comparable = (value?: string | null) => (value ? String(value) : '');
+  const sortReports = (left: T, right: T) =>
+    comparable(right.publishedDate).localeCompare(comparable(left.publishedDate)) ||
+    comparable(right.financialYear).localeCompare(comparable(left.financialYear)) ||
+    comparable(right.period).localeCompare(comparable(left.period)) ||
+    comparable(right.createdAt).localeCompare(comparable(left.createdAt));
+
+  const annual = reports.filter((report) => report.reportType === 'ANNUAL_REPORT').sort(sortReports).slice(0, 1);
+  const interim = reports
+    .filter((report) => report.reportType === 'INTERIM_REPORT' || report.reportType === 'QUARTERLY_REPORT')
+    .sort(sortReports)
+    .slice(0, 4);
+
+  return new Map<string, 'LATEST_ANNUAL_REPORT' | 'LATEST_4_INTERIM_REPORTS'>([
+    ...annual.map((report) => [report.id, 'LATEST_ANNUAL_REPORT'] as const),
+    ...interim.map((report) => [report.id, 'LATEST_4_INTERIM_REPORTS'] as const)
+  ]);
+}
+
+export function classifyAnnouncementAutoDownload(input: { title?: string | null; category?: string | null; publishedDate?: string | null; hasPdfUrl?: boolean }, now = new Date()) {
+  if (!input.hasPdfUrl) return 'NO_VALID_PDF_URL';
+  if (!input.publishedDate) return 'UNKNOWN_DATE_METADATA_ONLY';
+  const published = new Date(`${input.publishedDate}T00:00:00Z`);
+  if (Number.isNaN(published.getTime())) return 'UNKNOWN_DATE_METADATA_ONLY';
+  const ninetyDaysAgo = new Date(now.getTime());
+  ninetyDaysAgo.setUTCDate(ninetyDaysAgo.getUTCDate() - 90);
+  if (published < ninetyDaysAgo) return 'OLD_ANNOUNCEMENT_METADATA_ONLY';
+  const text = `${input.title ?? ''} ${input.category ?? ''}`.toLowerCase();
+  const important = /(financial statement|interim financial statement|annual report|dividend|rights issue|share split|subdivision|capitalization|director|board|material disclosure|circular|corporate disclosure|takeover|merger|amalgamation|related party transaction)/i.test(text);
+  return important ? 'IMPORTANT_RECENT_ANNOUNCEMENT' : 'NON_IMPORTANT_ANNOUNCEMENT_METADATA_ONLY';
 }
 
 function safeRelativePath(filePath: string): string {
@@ -97,17 +140,16 @@ async function queueDocumentDownloads(documentIds: Array<string | null | undefin
   }
 }
 
-function sanitizePdfInput<T extends { pdfUrl?: string | null; title?: string; announcementTitle?: string }>(input: T, warnings: string[], symbol: string): T {
-  if (!input.pdfUrl) return input;
-  try {
-    assertCsePdfUrl(input.pdfUrl);
-    return input;
-  } catch (error) {
-    const label = input.title ?? input.announcementTitle ?? 'CSE document';
-    const message = error instanceof Error ? error.message : 'Invalid CSE PDF URL';
-    warnings.push(`${symbol}: skipped non-CSE/invalid PDF URL for ${label}: ${message}`);
-    return { ...input, pdfUrl: null };
+function sanitizePdfInput<T extends { pdfUrl?: string | null; originalPdfUrl?: string | null; title?: string; announcementTitle?: string }>(input: T, warnings: string[], symbol: string): T {
+  const rawPdfUrl = input.originalPdfUrl ?? input.pdfUrl ?? null;
+  if (!rawPdfUrl) return input;
+  const normalized = normalizeCsePdfUrl(rawPdfUrl);
+  if (normalized) {
+    return { ...input, pdfUrl: normalized, originalPdfUrl: rawPdfUrl };
   }
+  const label = input.title ?? input.announcementTitle ?? 'CSE document';
+  warnings.push(`${symbol}: skipped non-CSE/invalid PDF URL for ${label}: Only CSE CDN upload_report_file PDF URLs are allowed`);
+  return { ...input, pdfUrl: null, originalPdfUrl: rawPdfUrl };
 }
 
 async function runForSymbols<T>(input: {
@@ -212,9 +254,9 @@ async function executeFinancialReports(runId: string, options: { symbol?: string
         for (const report of fetched.reports) {
           const sanitized = sanitizePdfInput(report, warnings, identity.symbol) as CseFinancialReportInput;
           if (sanitized.pdfUrl) validDocuments += 1;
-          const saved = await repo.upsertFinancialReport(identity, sanitized);
-          documentIds.push(saved.document_id);
+          await repo.upsertFinancialReport(identity, sanitized);
         }
+        documentIds.push(...(await repo.refreshFinancialReportAutoDownloadEligibility(identity.symbol)));
         rawPayloads.push({ symbol: identity.symbol, fetched });
         return { recordsFound: fetched.reports.length, documentsDiscovered: validDocuments, warnings };
       }
@@ -253,9 +295,9 @@ async function executeAnnouncements(runId: string, options: { symbol?: string; s
         for (const announcement of fetched.announcements) {
           const sanitized = sanitizePdfInput(announcement, warnings, identity.symbol) as CseAnnouncementInput;
           if (sanitized.pdfUrl) validDocuments += 1;
-          const saved = await repo.upsertAnnouncement(identity, sanitized, options);
-          documentIds.push(saved.document_id);
+          await repo.upsertAnnouncement(identity, sanitized, options);
         }
+        documentIds.push(...(await repo.refreshAnnouncementAutoDownloadEligibility(identity.symbol)));
         rawPayloads.push({ symbol: identity.symbol, fetched });
         return {
           recordsFound: fetched.announcements.length,

@@ -26,9 +26,12 @@ test('CSE company-intelligence has document retry controls for reports and annou
   assert.match(routes, /company-financial-reports\/:id\/retry-document/);
   assert.match(routes, /company-announcements\/:id\/retry-document/);
   assert.match(service, /retryFinancialReportDocument/);
+  assert.match(repository, /SET pdf_url = \$2/);
+  assert.match(repository, /document_id = \$3/);
   assert.match(service, /retryAnnouncementDocument/);
-  assert.match(repository, /assertCsePdfUrl\(report\.pdf_url\)/);
-  assert.match(repository, /assertCsePdfUrl\(announcement\.pdf_url\)/);
+  assert.match(repository, /retryPdfSourceFromRow\(report, 'CSE financial report'\)/);
+  assert.match(repository, /retryPdfSourceFromRow\(announcement, 'CSE announcement'\)/);
+  assert.match(repository, /original_pdf_url = COALESCE\(original_pdf_url, \$5\)/);
 });
 
 test('CSE latest price flow is market-status-first for scheduled polling', () => {

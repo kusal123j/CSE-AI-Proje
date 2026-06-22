@@ -1,16 +1,22 @@
 # Final Review Readiness Report
 
-This final 9+ correction pass addresses the remaining 8.6/10 blockers:
+## Implemented corrections
 
-- Added live CSE API verification script.
-- Added live verification docs and fixture folder.
-- Added per-symbol import run results endpoint.
-- Added retry failed symbols endpoint and Mega Panel page.
-- Added document retry endpoints for financial reports and announcements.
-- Added retry PDF buttons in report/announcement monitoring pages.
-- Added market-status-first scheduled latest price polling behavior.
-- Added market status snapshot table and latest price market status UI.
-- Added final operations tests/documentation.
-- Fixed announcement upsert parameter safety inherited from earlier correction work.
+- Hardened document creation with CDN `source_url` lookup before insert.
+- Added savepoint-protected insert handling to prevent one duplicate conflict from aborting the whole import transaction.
+- Added fallback behavior for business-key conflicts so missing/weak year-period data does not crash document creation.
+- Retry now prefers valid `pdf_url`, then normalizes `original_pdf_url` if needed.
+- Retry clears old report/announcement document errors before queueing.
+- Announcement auto-download eligibility now requires a known `published_date` within the last 90 days.
+- Unknown-date important announcements are metadata-only with `UNKNOWN_DATE_METADATA_ONLY` reason.
+- Python worker URL normalizers now reject non-CSE absolute URLs instead of converting evil-host paths to CDN.
+- Mega Panel report/announcement pages now use compact URL buttons and truncated tooltip-backed errors/reasons.
+- Tests/checks were updated to cover the new correction behavior as far as possible without installed dependencies.
 
-Expected rating after local dependency-backed test confirmation: 9.2/10 to 9.4/10.
+## Remaining validation needed for 10/10
+
+A full Docker/local run with PostgreSQL, Redis, MinIO, backend, Mega Panel, and Python worker is still required to prove live queue/database behavior end-to-end.
+
+## Expected rating after local validation
+
+9/10 to 9.3/10.

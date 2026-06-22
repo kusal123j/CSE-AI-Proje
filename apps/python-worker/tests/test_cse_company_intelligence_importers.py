@@ -35,6 +35,10 @@ def test_financial_reports_importer_classifies_annual_and_interim(monkeypatch):
     assert 'ANNUAL_REPORT' in types
     assert 'INTERIM_REPORT' in types
     assert all(item['pdfUrl'].startswith('https://cdn.cse.lk/') for item in result['reports'])
+    assert all('originalPdfUrl' in item for item in result['reports'])
+    assert reports.normalize_cse_pdf_url('https://www.cse.lk/api/cmt/upload_report_file/510_1781521818535.pdf') == 'https://cdn.cse.lk/cmt/upload_report_file/510_1781521818535.pdf'
+    assert reports.normalize_cse_pdf_url('https://evil.example/cmt/upload_report_file/510_1781521818535.pdf') is None
+    assert reports.normalize_cse_pdf_url('javascript:alert(1)') is None
 
 
 def test_announcements_importer_preserves_date_range_and_pdf(monkeypatch):
@@ -46,3 +50,8 @@ def test_announcements_importer_preserves_date_range_and_pdf(monkeypatch):
     assert result['endDate'] == '2025-12-31'
     assert result['announcements'][0]['symbol'] == 'AFSL.N0000'
     assert result['announcements'][0]['pdfUrl'].endswith('.pdf')
+    assert result['announcements'][0]['pdfUrl'].startswith('https://cdn.cse.lk/')
+    assert 'originalPdfUrl' in result['announcements'][0]
+    assert announcements.normalize_cse_pdf_url('/api/cmt/upload_report_file/510_1781521818535.pdf') == 'https://cdn.cse.lk/cmt/upload_report_file/510_1781521818535.pdf'
+    assert announcements.normalize_cse_pdf_url('https://cdn.cse.lk/cmt/upload_report_file/510_1781521818535.pdf') == 'https://cdn.cse.lk/cmt/upload_report_file/510_1781521818535.pdf'
+    assert announcements.normalize_cse_pdf_url('data:application/pdf;base64,abcd') is None

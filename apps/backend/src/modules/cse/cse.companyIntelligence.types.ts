@@ -41,6 +41,7 @@ export interface CseFinancialReportInput {
   period?: string | null;
   publishedDate?: string | null;
   pdfUrl?: string | null;
+  originalPdfUrl?: string | null;
   sourceUrl?: string | null;
   sourceDocumentId?: string | null;
   payloadHash?: string | null;
@@ -54,6 +55,7 @@ export interface CseAnnouncementInput {
   publishedAt?: string | null;
   publishedDate?: string | null;
   pdfUrl?: string | null;
+  originalPdfUrl?: string | null;
   sourceUrl?: string | null;
   sourceAnnouncementId?: string | null;
   payloadHash?: string | null;

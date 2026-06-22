@@ -5,7 +5,7 @@ import json
 import re
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -25,6 +25,28 @@ def _headers() -> dict[str, str]:
         'Origin': 'https://www.cse.lk',
         'Referer': 'https://www.cse.lk/',
     }
+
+
+
+
+def normalize_cse_pdf_url(value: str | None) -> str | None:
+    text = clean_text(value)
+    if not text or '.pdf' not in text.lower():
+        return None
+    if re.match(r'^(javascript|data):', text, re.I):
+        return None
+    absolute = urljoin('https://www.cse.lk/', text)
+    parsed = urlparse(absolute)
+    host = (parsed.hostname or '').lower()
+    if host not in {'www.cse.lk', 'cse.lk', 'cdn.cse.lk'}:
+        return None
+    path = parsed.path.replace('\\', '/')
+    path = re.sub(r'^/api/cmt/', '/cmt/', path, flags=re.I)
+    if not path.lower().endswith('.pdf'):
+        return None
+    if not re.search(r'/cmt/upload_report_file/[^?#]+\.pdf$', path, re.I):
+        return None
+    return f'https://cdn.cse.lk{path}'
 
 
 def _post_api(api_url: str, data: dict[str, Any]) -> Any:
@@ -73,12 +95,16 @@ def _date(value: Any) -> str | None:
     return None
 
 
-def _pdf_url(record: dict[str, Any], api_url: str) -> str | None:
+def _raw_pdf_url(record: dict[str, Any], api_url: str) -> str | None:
     value = _value(record, ['pdfUrl', 'fileUrl', 'downloadUrl', 'url', 'href', 'filePath', 'path'])
     text = clean_text(value)
     if not text or '.pdf' not in text.lower():
         return None
     return urljoin(api_url, text)
+
+
+def _pdf_url(record: dict[str, Any], api_url: str) -> str | None:
+    return normalize_cse_pdf_url(_raw_pdf_url(record, api_url))
 
 
 def _rows_from_payload(payload: Any) -> list[dict[str, Any]]:
@@ -107,13 +133,16 @@ def run_announcements_import(symbol: str, start_date: str, end_date: str, api_ur
     for record in records:
         title = clean_text(_value(record, ['title', 'name', 'description', 'announcementTitle', 'subject'])) or 'CSE Announcement'
         published_date = _date(_value(record, ['publishedDate', 'date', 'announcementDate', 'releaseDate']))
+        original_pdf = _raw_pdf_url(record, api_url)
+        pdf = normalize_cse_pdf_url(original_pdf)
         announcements.append({
             'symbol': normalized_symbol,
             'announcementTitle': title,
             'announcementCategory': clean_text(_value(record, ['category', 'type', 'announcementCategory'])) or None,
             'publishedAt': None,
             'publishedDate': published_date,
-            'pdfUrl': _pdf_url(record, api_url),
+            'pdfUrl': pdf,
+            'originalPdfUrl': original_pdf,
             'sourceUrl': api_url,
             'sourceAnnouncementId': clean_text(_value(record, ['id', 'announcementId', 'documentId'])) or None,
             'payloadHash': _hash(record),

@@ -727,12 +727,17 @@ CREATE TABLE IF NOT EXISTS cse_company_financial_reports (
   period VARCHAR(50),
   published_date DATE,
   pdf_url TEXT,
+  original_pdf_url TEXT,
   source_url TEXT,
   document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
   source_document_id TEXT,
   payload_hash TEXT,
+  auto_download_eligible BOOLEAN NOT NULL DEFAULT false,
+  auto_download_reason TEXT,
   download_status TEXT NOT NULL DEFAULT 'DISCOVERED',
   extract_status TEXT NOT NULL DEFAULT 'PENDING',
+  document_status TEXT,
+  document_error TEXT,
   raw_row_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -749,10 +754,15 @@ CREATE TABLE IF NOT EXISTS cse_company_announcements (
   published_at TIMESTAMPTZ,
   published_date DATE,
   pdf_url TEXT,
+  original_pdf_url TEXT,
   source_url TEXT,
   document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
   source_announcement_id TEXT,
   payload_hash TEXT,
+  auto_download_eligible BOOLEAN NOT NULL DEFAULT false,
+  auto_download_reason TEXT,
+  document_status TEXT,
+  document_error TEXT,
   date_range_start DATE,
   date_range_end DATE,
   raw_row_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -766,6 +776,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS cse_company_announcements_symbol_source_id_uni
 CREATE UNIQUE INDEX IF NOT EXISTS cse_company_announcements_symbol_pdf_unique
   ON cse_company_announcements(symbol, pdf_url)
   WHERE pdf_url IS NOT NULL;
+
+
+ALTER TABLE cse_company_financial_reports ADD COLUMN IF NOT EXISTS original_pdf_url TEXT;
+ALTER TABLE cse_company_financial_reports ADD COLUMN IF NOT EXISTS auto_download_eligible BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cse_company_financial_reports ADD COLUMN IF NOT EXISTS auto_download_reason TEXT;
+ALTER TABLE cse_company_financial_reports ADD COLUMN IF NOT EXISTS document_status TEXT;
+ALTER TABLE cse_company_financial_reports ADD COLUMN IF NOT EXISTS document_error TEXT;
+
+ALTER TABLE cse_company_announcements ADD COLUMN IF NOT EXISTS original_pdf_url TEXT;
+ALTER TABLE cse_company_announcements ADD COLUMN IF NOT EXISTS auto_download_eligible BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cse_company_announcements ADD COLUMN IF NOT EXISTS auto_download_reason TEXT;
+ALTER TABLE cse_company_announcements ADD COLUMN IF NOT EXISTS document_status TEXT;
+ALTER TABLE cse_company_announcements ADD COLUMN IF NOT EXISTS document_error TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_cse_financial_reports_symbol_type_date
+  ON cse_company_financial_reports(symbol, report_type, published_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_financial_reports_pdf_url
+  ON cse_company_financial_reports(pdf_url);
+CREATE INDEX IF NOT EXISTS idx_cse_announcements_symbol_date_full
+  ON cse_company_announcements(symbol, published_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cse_announcements_pdf_url
+  ON cse_company_announcements(pdf_url);
 
 CREATE TABLE IF NOT EXISTS cse_latest_prices (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

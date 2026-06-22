@@ -21,6 +21,9 @@ describe('company intelligence Mega Panel pages', () => {
     expect(source).toContain('getAllCompanyFinancialReports');
     expect(source).toContain('Run all companies');
     expect(source).toContain('document_status');
+    expect(source).toContain('original_pdf_url');
+    expect(source).toContain('auto_download_eligible');
+    expect(source).toContain('document_error');
   });
 
   it('announcements page supports symbol and date range all-company import', () => {
@@ -29,6 +32,9 @@ describe('company intelligence Mega Panel pages', () => {
     expect(source).toContain('endDate');
     expect(source).toContain('Run all companies');
     expect(source).toContain('getAllCompanyAnnouncements');
+    expect(source).toContain('original_pdf_url');
+    expect(source).toContain('auto_download_eligible');
+    expect(source).toContain('document_error');
   });
 
   it('latest prices page exposes freshness warning for stale prices', () => {

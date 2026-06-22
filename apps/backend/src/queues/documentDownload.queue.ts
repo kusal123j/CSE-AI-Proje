@@ -11,6 +11,8 @@ import { storageService } from '../modules/storage/storage.service';
 import { sha256 } from '../utils/checksum';
 import { validatePdfDownload } from '../utils/pdfValidation';
 import { addPdfExtractJob } from './pdfExtract.queue';
+import { assertAllowedCsePdfUrl } from '../modules/cse/cse.sourceGuard';
+import { updateLinkedCseDocumentStatus } from '../modules/cse/cse.companyIntelligence.repository';
 
 export interface DocumentDownloadJobData {
   documentId: string;
@@ -52,11 +54,14 @@ export async function addDocumentDownloadJob(data: DocumentDownloadJobData) {
 async function processDocumentDownload(job: Job<DocumentDownloadJobData>) {
   const { documentId, sourceUrl } = job.data;
   await jobRepo.markProcessingJobActiveByBullId(String(job.id), QUEUE_NAMES.DOCUMENT_DOWNLOAD);
-  await createProcessingLog({ documentId, level: 'INFO', message: 'PDF download started', metadata: { sourceUrl } });
 
   try {
+    const normalizedSourceUrl = assertAllowedCsePdfUrl(sourceUrl);
+    await createProcessingLog({ documentId, level: 'INFO', message: 'PDF download started', metadata: { sourceUrl, normalizedSourceUrl } });
     const document = await documentService.get(documentId);
-    const response = await axios.get<ArrayBuffer>(sourceUrl, {
+    const downloadUrl = assertAllowedCsePdfUrl(document.source_url || normalizedSourceUrl);
+    await updateLinkedCseDocumentStatus(documentId, 'DOWNLOADING', null).catch(() => undefined);
+    const response = await axios.get<ArrayBuffer>(downloadUrl, {
       responseType: 'arraybuffer',
       timeout: env.PDF_DOWNLOAD_TIMEOUT_MS,
       maxContentLength: env.MAX_PDF_SIZE_MB * 1024 * 1024,
@@ -69,7 +74,7 @@ async function processDocumentDownload(job: Job<DocumentDownloadJobData>) {
 
     const buffer = Buffer.from(response.data);
     const validation = validatePdfDownload({
-      sourceUrl,
+      sourceUrl: downloadUrl,
       buffer,
       contentType: response.headers['content-type']?.toString(),
       contentLength: response.headers['content-length'] ? Number(response.headers['content-length']) : null
@@ -79,6 +84,7 @@ async function processDocumentDownload(job: Job<DocumentDownloadJobData>) {
     const checksumDuplicate = await documentService.findByChecksum(checksum);
     if (checksumDuplicate && checksumDuplicate.id !== documentId) {
       await documentService.markDuplicate(documentId, checksumDuplicate.id, 'CHECKSUM');
+      await updateLinkedCseDocumentStatus(documentId, 'DUPLICATE', `Duplicate of document ${checksumDuplicate.id}`).catch(() => undefined);
       await jobRepo.markProcessingJobCompletedByBullId(String(job.id), QUEUE_NAMES.DOCUMENT_DOWNLOAD);
       await createProcessingLog({
         documentId,
@@ -110,6 +116,8 @@ async function processDocumentDownload(job: Job<DocumentDownloadJobData>) {
       status: 'STORED'
     });
 
+    await updateLinkedCseDocumentStatus(documentId, 'STORED', null).catch(() => undefined);
+
     await createProcessingLog({
       documentId,
       level: 'INFO',
@@ -123,6 +131,7 @@ async function processDocumentDownload(job: Job<DocumentDownloadJobData>) {
       objectKey: upload.objectKey
     });
     await documentService.updateStatus(documentId, 'EXTRACTING');
+    await updateLinkedCseDocumentStatus(documentId, 'EXTRACTING', null).catch(() => undefined);
     await createProcessingLog({
       documentId,
       level: 'INFO',
@@ -135,6 +144,7 @@ async function processDocumentDownload(job: Job<DocumentDownloadJobData>) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown PDF download error';
     await documentService.updateStatus(documentId, 'FAILED', message);
+    await updateLinkedCseDocumentStatus(documentId, 'FAILED', message).catch(() => undefined);
     await jobRepo.markProcessingJobFailedByBullId(String(job.id), QUEUE_NAMES.DOCUMENT_DOWNLOAD, message);
     await createProcessingLog({ documentId, level: 'ERROR', message: 'PDF download failed', metadata: { error: message } });
     throw error;

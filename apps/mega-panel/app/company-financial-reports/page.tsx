@@ -16,6 +16,31 @@ function text(value: unknown) {
   return value === null || value === undefined || value === '' ? '—' : String(value);
 }
 
+function yesNo(value: unknown) {
+  if (value === true || value === 'true') return 'Yes';
+  if (value === false || value === 'false') return 'No';
+  return text(value);
+}
+
+function PdfLink({ href, label }: { href?: string | null; label: string }) {
+  return href ? (
+    <a
+      className="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title={href}
+    >
+      {label}
+    </a>
+  ) : <>—</>;
+}
+
+function ShortText({ value, className = '' }: { value?: unknown; className?: string }) {
+  const rendered = text(value);
+  return <span className={`block max-w-xs truncate ${className}`} title={rendered}>{rendered}</span>;
+}
+
 export default function CompanyFinancialReportsPage() {
   const [symbol, setSymbol] = useState('');
   const [reportType, setReportType] = useState('');
@@ -77,8 +102,8 @@ export default function CompanyFinancialReportsPage() {
       {reports.loading ? <Skeleton className="h-96" /> : reports.error ? <BackendMissingState error={reports.error} expectedEndpoint="GET /api/cse/company-financial-reports" /> : (
         <TableContainer>
           <Table>
-            <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Symbol</th><th className="px-4 py-3">Company</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Year/Period</th><th className="px-4 py-3">Published</th><th className="px-4 py-3">Document</th><th className="px-4 py-3">PDF</th><th className="px-4 py-3">Actions</th></tr></thead>
-            <tbody className="divide-y divide-border">{(reports.data ?? []).map((report) => <tr key={report.id}><td className="px-4 py-3 font-semibold text-primary"><Link href={`/company-profiles/${encodeURIComponent(report.symbol)}`}>{report.symbol}</Link></td><td className="px-4 py-3">{text(report.company_name)}</td><td className="px-4 py-3">{text(report.report_type)}</td><td className="px-4 py-3 max-w-xl">{text(report.title)}</td><td className="px-4 py-3">{text(report.financial_year)} / {text(report.period)}</td><td className="px-4 py-3">{text(report.published_date)}</td><td className="px-4 py-3">{report.document_id ? text(report.document_status ?? 'DISCOVERED') : 'Missing PDF'}</td><td className="px-4 py-3">{report.pdf_url ? <a className="text-primary underline" href={report.pdf_url} target="_blank" rel="noreferrer">Open</a> : '—'}</td><td className="px-4 py-3"><Button variant="secondary" onClick={() => retryDocument(report.id)} disabled={!report.pdf_url}>Retry PDF</Button></td></tr>)}</tbody>
+            <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Symbol</th><th className="px-4 py-3">Company</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Year/Period</th><th className="px-4 py-3">Published</th><th className="px-4 py-3">Auto</th><th className="px-4 py-3">Document</th><th className="px-4 py-3">URLs</th><th className="px-4 py-3">Error</th><th className="px-4 py-3">Actions</th></tr></thead>
+            <tbody className="divide-y divide-border">{(reports.data ?? []).map((report) => <tr key={report.id}><td className="px-4 py-3 font-semibold text-primary"><Link href={`/company-profiles/${encodeURIComponent(report.symbol)}`}>{report.symbol}</Link></td><td className="px-4 py-3">{text(report.company_name)}</td><td className="px-4 py-3">{text(report.report_type)}</td><td className="px-4 py-3 max-w-xl">{text(report.title)}</td><td className="px-4 py-3">{text(report.financial_year)} / {text(report.period)}</td><td className="px-4 py-3">{text(report.published_date)}</td><td className="px-4 py-3"><div className="font-medium">{yesNo(report.auto_download_eligible)}</div><ShortText value={report.auto_download_reason} className="text-xs text-muted-foreground" /></td><td className="px-4 py-3">{report.document_id ? text(report.document_status ?? 'DISCOVERED') : 'Metadata only'}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><PdfLink href={report.original_pdf_url} label="Original" /><PdfLink href={report.pdf_url} label="CDN PDF" /></div></td><td className="px-4 py-3 text-xs text-destructive"><ShortText value={report.document_error} /></td><td className="px-4 py-3"><Button variant="secondary" onClick={() => retryDocument(report.id)} disabled={!report.pdf_url && !report.original_pdf_url}>Retry PDF</Button></td></tr>)}</tbody>
           </Table>
         </TableContainer>
       )}
