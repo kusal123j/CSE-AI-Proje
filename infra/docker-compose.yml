@@ -172,11 +172,10 @@ services:
     command: npm run dev
 
   mega-panel:
-    build:
-      context: ..
-      dockerfile: apps/mega-panel/Dockerfile
+    image: node:20-alpine
     container_name: cse-mega-panel
     restart: unless-stopped
+    working_dir: /app
     env_file:
       - ../.env
     environment:
@@ -187,15 +186,16 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ../apps/mega-panel:/app/apps/mega-panel
-      - /app/apps/mega-panel/node_modules
-      - /app/apps/mega-panel/.next
+      - ../apps/mega-panel:/app
+      - mega_panel_node_modules:/app/node_modules
+      - ../.npm-cache:/root/.npm
     depends_on:
       backend:
         condition: service_healthy
-    command: sh -c "if [ ! -x node_modules/.bin/next ]; then npm install --ignore-scripts; fi; npm run dev"
+    command: sh -c "if [ ! -x node_modules/.bin/next ]; then npm install --no-package-lock --ignore-scripts --no-audit --no-fund --loglevel=info; fi; exec node_modules/.bin/next dev --port 3001 --hostname 0.0.0.0"
 
 volumes:
   postgres_data:
   minio_data:
   qdrant_data:
+  mega_panel_node_modules:

@@ -12,10 +12,10 @@
     "docker:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "test:backend": "npm --prefix apps/backend test",
     "test:python": "python -m pytest apps/python-worker/tests",
-    "dev:mega-panel": "npm --prefix apps/mega-panel run dev",
-    "build:mega-panel": "npm --prefix apps/mega-panel run build",
-    "typecheck:mega-panel": "npm --prefix apps/mega-panel run typecheck",
-    "test:mega-panel": "npm --prefix apps/mega-panel run test"
+    "dev:mega-panel": "npm --workspace cse-mega-panel run dev",
+    "build:mega-panel": "npm --workspace cse-mega-panel run build",
+    "typecheck:mega-panel": "npm --workspace cse-mega-panel run typecheck",
+    "test:mega-panel": "npm --workspace cse-mega-panel run test"
   },
   "workspaces": [
     "apps/backend",

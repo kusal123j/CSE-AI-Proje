@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "@tanstack/react-table": "^8.20.6",
-    "cse-ai-research-assistant": "file:../..",
     "next": "16.2.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-is": "^19.2.7",
     "recharts": "3.8.1"
   },
   "devDependencies": {
